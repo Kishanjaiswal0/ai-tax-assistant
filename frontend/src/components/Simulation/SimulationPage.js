@@ -1,7 +1,7 @@
 // src/components/Simulation/SimulationPage.js
 import React, { useState, useMemo } from 'react';
 import { calcTax, fmt } from '../../utils/taxEngine';
-import { XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from 'recharts';
 
 export default function SimulationPage() {
   const [income,  setIncome]  = useState(1000000);
