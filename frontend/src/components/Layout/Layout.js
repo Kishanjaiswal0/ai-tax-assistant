@@ -37,7 +37,7 @@ export default function Layout() {
         <div className="brand-orb">🧾</div>
         <div className="brand-name">
           AI Tax Assistant
-          <span>FY 2024-25 · {isCA ? 'CA Portal' : 'Taxpayer'}</span>
+          <span>{isCA ? 'CA Portal' : 'Taxpayer'}</span>
         </div>
       </div>
 

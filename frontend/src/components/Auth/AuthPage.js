@@ -67,7 +67,7 @@ export default function AuthPage() {
             AI Tax<span style={{ background:'var(--grad-accent)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}> Assistant</span>
           </h1>
           <p style={{ color:'var(--text-secondary)', fontSize:'13px', marginTop:'6px' }}>
-            Smart Tax Filing for India · FY 2024-25
+            Smart Tax Filing for India
           </p>
         </div>
 

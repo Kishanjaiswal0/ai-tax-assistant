@@ -49,7 +49,7 @@ export default function CalculatorPage() {
       <div className="page-header">
         <div>
           <div className="page-title">📊 Tax Calculator</div>
-          <div className="page-sub">Old vs New Regime · FY 2024-25</div>
+          <div className="page-sub">Old vs New Regime</div>
         </div>
         <div style={{ display:'flex', gap:'8px' }}>
           {['inputs','results'].map(t => (

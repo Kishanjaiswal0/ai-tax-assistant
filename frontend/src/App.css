@@ -74,6 +74,52 @@
   --shadow-lg    : 0 20px 60px rgba(0,0,0,.12);
 }
 
+/* Gradient theme */
+[data-theme="gradient"] {
+  --bg-base      : #0a2f4a;
+  --bg-surface   : rgba(10,47,74,0.95);
+  --bg-elevated  : rgba(20,60,90,0.95);
+  --bg-card      : rgba(30,75,105,0.9);
+  --bg-hover     : rgba(40,90,120,0.9);
+  --bg-input     : rgba(10,47,74,0.95);
+
+  --border       : rgba(0,200,255,0.2);
+  --border-strong: rgba(0,200,255,0.3);
+  --border-focus : #00e5ff;
+
+  --text-primary : #e0ffff;
+  --text-secondary: #80d8ff;
+  --text-muted   : #40b0d0;
+
+  --accent       : #00e5ff;
+  --accent-glow  : rgba(0,229,255,.3);
+  --shadow-glow  : 0 0 30px rgba(0,229,255,.25);
+}
+
+/* Neon theme */
+[data-theme="neon"] {
+  --bg-base      : #0a0e27;
+  --bg-surface   : #0f1535;
+  --bg-elevated  : #1a1f3a;
+  --bg-card      : #1f2745;
+  --bg-hover     : #2a3255;
+  --bg-input     : #0f1535;
+
+  --border       : rgba(255,0,255,0.1);
+  --border-strong: rgba(0,255,255,0.2);
+  --border-focus : #ff00ff;
+
+  --text-primary : #00ffff;
+  --text-secondary: #ff00ff;
+  --text-muted   : #00ff88;
+
+  --accent       : #ff00ff;
+  --accent-glow  : rgba(255,0,255,.3);
+  --shadow-glow  : 0 0 20px rgba(255,0,255,.4);
+  --success      : #00ff88;
+  --danger       : #ff0055;
+}
+
 /* ── Reset ──────────────────────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -325,11 +371,11 @@ code,pre,.mono{font-family:'JetBrains Mono',monospace}
   display:flex;align-items:flex-end;gap:10px;
 }
 .chat-textarea{
-  flex:1;padding:10px 14px;max-height:110px;
+  flex:1;padding:12px 16px;min-height:48px;max-height:150px;
   resize:none;border-radius:10px;
   background:var(--bg-card);border:1px solid var(--border-strong);
   color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;
-  outline:none;transition:all var(--speed);line-height:1.5;
+  outline:none;transition:all var(--speed);line-height:1.5;width:100%;
 }
 .chat-textarea:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-glow)}
 .chat-send-btn{

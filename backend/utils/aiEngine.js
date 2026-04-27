@@ -61,7 +61,7 @@ const callGrok = async (messages) => {
             },
             ...messages
           ],
-          temperature : 0.7,
+          temperature : 0.3,
           max_tokens  : 1024,
           top_p       : 0.9,
           stream      : false
@@ -116,6 +116,59 @@ const callOllama = async (messages) => {
   } catch (err) {
     console.warn('Ollama failed:', err.message);
     return null;
+  }
+};
+
+// ─── INTENT CLASSIFICATION (Tax-Related Filter) ───────────────
+const classifyQuery = async (userMessage) => {
+  const key = process.env.GROQ_API_KEY;
+  if (!key || key === 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') {
+    return 'TAX_RELATED'; // Default allow if API not configured
+  }
+
+  const classificationPrompt = `You are a classifier that determines if a user query is related to tax, finance, deductions, investments, or financial planning in India.
+
+Tax-related topics include: income tax, ITR filing, deductions (80C, 80D, NPS, HRA), tax regimes, GST, capital gains, investments, financial planning, salary, income, rent, insurance, loans.
+
+NOT tax-related: programming, OOP, movies, sports, general knowledge, cooking, travel, etc.
+
+Respond with ONLY "TAX_RELATED" or "NOT_RELATED" - no explanation.
+
+User message: "${userMessage}"`;
+
+  try {
+    const res = await fetch(
+      'https://api.groq.com/openai/v1/chat/completions',
+      {
+        method  : 'POST',
+        headers : { 
+          'Authorization': `Bearer ${key}`, 
+          'Content-Type': 'application/json'
+        },
+        body    : JSON.stringify({
+          model       : 'llama-3.3-70b-versatile',
+          messages    : [{ role: 'user', content: classificationPrompt }],
+          temperature : 0.3,
+          max_tokens  : 10,
+          stream      : false
+        }),
+        timeout : 10000
+      }
+    );
+
+    if (!res.ok) {
+      console.warn(`[CLASSIFY] API error (${res.status}), defaulting to TAX_RELATED`);
+      return 'TAX_RELATED';
+    }
+
+    const data = await res.json();
+    const classification = data?.choices?.[0]?.message?.content?.trim().toUpperCase() || 'TAX_RELATED';
+    
+    console.log(`[CLASSIFY] "${userMessage.slice(0, 50)}..." → ${classification}`);
+    return classification;
+  } catch (err) {
+    console.warn(`[CLASSIFY] Error: ${err.message}, defaulting to TAX_RELATED`);
+    return 'TAX_RELATED';
   }
 };
 
@@ -367,15 +420,29 @@ Please try rephrasing your question or use the **Tax Calculator** tab for instan
 
 // ─── MAIN FUNCTION ────────────────────────────────────────────
 const getAIResponse = async (messages, context = {}) => {
-  // Try Grok (primary) → Ollama → Rule-based
+  // Step 1: Classify query intent (tax-related or not)
+  const userMessage = messages[messages.length - 1]?.content || '';
+  const classification = await classifyQuery(userMessage);
+  
+  if (classification === 'NOT_RELATED') {
+    return `I am a Tax Assistant AI and can only help with tax, income, deductions, investments, and financial planning queries. Please ask a tax-related question! 📊
+
+Examples of questions I can help with:
+- 💰 How much tax will I pay on ₹10 lakh income?
+- 📋 What is Section 80C and how do I use it?
+- 🏠 Is HRA taxable?
+- 📊 Old vs New Regime – which is better?
+- 💳 How to save tax with NPS?`;
+  }
+
+  // Step 2: Try Grok (primary) → Ollama → Rule-based
   const grok   = await callGrok(messages);
   if (grok) return grok;
 
   const ollama = await callOllama(messages);
   if (ollama) return ollama;
 
-  const lastMsg = messages[messages.length - 1]?.content || '';
-  return ruleBasedResponse(lastMsg, context);
+  return ruleBasedResponse(userMessage, context);
 };
 
 module.exports = { getAIResponse, SYSTEM_PROMPT };

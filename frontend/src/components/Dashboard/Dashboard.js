@@ -14,7 +14,7 @@ const quickActions = [
 ];
 
 const tips = [
-  { icon:'💡', text:'No tax up to ₹7 Lakh in New Regime (FY 2024-25)' },
+  { icon:'💡', text:'No tax up to ₹7 Lakh in New Regime' },
   { icon:'📌', text:'New regime standard deduction raised to ₹75,000 in Budget 2024' },
   { icon:'🚀', text:'NPS gives extra ₹50K deduction under 80CCD(1B) – over 80C limit!' },
   { icon:'📅', text:'ITR filing deadline: July 31, 2025 for individuals' },
@@ -49,7 +49,7 @@ export default function Dashboard() {
           <div className="page-title">
             {greeting()}, {user?.name?.split(' ')[0]} 👋
           </div>
-          <div className="page-sub">Welcome to your AI Tax Dashboard · FY 2024-25</div>
+          <div className="page-sub">Welcome to your AI Tax Dashboard</div>
         </div>
         <button className="btn btn-accent btn-sm" onClick={() => nav('/chat')}>
           🤖 Ask TaxBot

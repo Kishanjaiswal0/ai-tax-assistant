@@ -14,6 +14,8 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [theme,   setTheme]   = useState(localStorage.getItem('theme') || 'dark');
   const [lang,    setLang]    = useState(localStorage.getItem('lang')  || 'en');
+  const [voiceEnabled, setVoiceEnabled] = useState(localStorage.getItem('voiceEnabled') === 'true');
+  const [responseLanguage, setResponseLanguage] = useState(localStorage.getItem('responseLanguage') || 'auto');
 
   // Attach token to every request
   useEffect(() => {
@@ -37,6 +39,16 @@ export const AuthProvider = ({ children }) => {
     document.documentElement.setAttribute('lang', lang);
     localStorage.setItem('lang', lang);
   }, [lang]);
+
+  // Persist voice setting
+  useEffect(() => {
+    localStorage.setItem('voiceEnabled', voiceEnabled);
+  }, [voiceEnabled]);
+
+  // Persist response language
+  useEffect(() => {
+    localStorage.setItem('responseLanguage', responseLanguage);
+  }, [responseLanguage]);
 
   // Fetch user profile on mount
   useEffect(() => {
@@ -83,11 +95,14 @@ export const AuthProvider = ({ children }) => {
 
   const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
   const toggleLang  = () => setLang(l => l === 'en' ? 'hi' : 'en');
+  const toggleVoice = () => setVoiceEnabled(v => !v);
+  const setRespLang = (newLang) => setResponseLanguage(newLang);
+  const setCustomTheme = (newTheme) => setTheme(newTheme);
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, theme, lang,
-      login, signup, logout, updateProfile, toggleTheme, toggleLang,
+      user, token, loading, theme, lang, voiceEnabled, responseLanguage,
+      login, signup, logout, updateProfile, toggleTheme, toggleLang, toggleVoice, setRespLang, setCustomTheme,
       isCA   : user?.role === 'ca',
       isUser : user?.role === 'user'
     }}>
