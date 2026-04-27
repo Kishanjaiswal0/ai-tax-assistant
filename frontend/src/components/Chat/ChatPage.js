@@ -34,7 +34,7 @@ const QUICK_QUESTIONS = [
 ];
 
 export default function ChatPage() {
-  const { user, lang, voiceEnabled, responseLanguage, toggleVoice, setRespLang, theme, setCustomTheme } = useAuth();
+  const { user, voiceEnabled, responseLanguage, toggleVoice, setRespLang, theme, setCustomTheme } = useAuth();
   const [messages,       setMessages]       = useState([{ role:'assistant', content:WELCOME }]);
   const [input,          setInput]          = useState('');
   const [loading,        setLoading]        = useState(false);
