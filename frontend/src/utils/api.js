@@ -24,6 +24,10 @@ export const chatAPI = {
   sessions   : ()    => api.get('/api/chat/sessions'),
   session    : (sid) => api.get(`/api/chat/session/${sid}`),
   delSession : (sid) => api.delete(`/api/chat/session/${sid}`),
+  // Document context (in-chat uploads)
+  uploadDoc  : (fd)  => api.post('/api/chat/upload-doc', fd, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  clearDoc   : ()    => api.delete('/api/chat/clear-doc'),
+  docStatus  : ()    => api.get('/api/chat/doc-status'),
 };
 
 // Tax

@@ -3,6 +3,10 @@
 // ============================================================
 const fetch = require('node-fetch');
 
+// ─── PRE-PROCESSING MODULES (additive only, no existing logic changed) ────
+const { injectLanguageInstruction }  = require('./languageProcessor');
+const { injectDocumentContext }      = require('./documentContext');
+
 // ─── SYSTEM PROMPT ────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are TaxBot, an expert AI Tax Assistant for India (FY 2024-25).
 You are a friendly, conversational chatbot that helps Indian taxpayers understand taxes.
@@ -419,8 +423,25 @@ Please try rephrasing your question or use the **Tax Calculator** tab for instan
 };
 
 // ─── MAIN FUNCTION ────────────────────────────────────────────
-const getAIResponse = async (messages, context = {}) => {
+/**
+ * @param {Array}  messages  - OpenAI-style conversation array
+ * @param {Object} context   - tax context (income, age, regime, etc.)
+ * @param {Object} options   - { language: 'en'|'hi'|'bhojpuri'|'auto', userId: string }
+ */
+const getAIResponse = async (messages, context = {}, options = {}) => {
+  // ── PRE-PROCESSING LAYER (additive – runs before existing logic) ──────────
+  const { language = 'auto', userId = '' } = options;
+
+  // 1a. Inject document context onto the last user message (no-op if no doc stored)
+  let processedMessages = injectDocumentContext(messages, userId);
+
+  // 1b. Inject language instruction onto the last user message
+  const { messages: langMessages } = injectLanguageInstruction(processedMessages, language);
+  processedMessages = langMessages;
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Step 1: Classify query intent (tax-related or not)
+  // NOTE: Use the ORIGINAL last user message for classification (no instruction noise)
   const userMessage = messages[messages.length - 1]?.content || '';
   const classification = await classifyQuery(userMessage);
   
@@ -436,12 +457,14 @@ Examples of questions I can help with:
   }
 
   // Step 2: Try Grok (primary) → Ollama → Rule-based
-  const grok   = await callGrok(messages);
+  // Pass the PRE-PROCESSED messages (with language + doc context) to AI
+  const grok   = await callGrok(processedMessages);
   if (grok) return grok;
 
-  const ollama = await callOllama(messages);
+  const ollama = await callOllama(processedMessages);
   if (ollama) return ollama;
 
+  // Rule-based fallback uses the original user message (no prefix noise)
   return ruleBasedResponse(userMessage, context);
 };
 

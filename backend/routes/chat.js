@@ -1,10 +1,28 @@
 // routes/chat.js - Chat Routes with AI Memory (last 10 messages = 5 complete turns)
 const express     = require('express');
+const multer      = require('multer');
 const { auth }    = require('../middleware/auth');
 const { getAIResponse } = require('../utils/aiEngine');
 const ChatHistory = require('../models/ChatHistory');
+const {
+  storeDocumentText,
+  clearDocumentText,
+  getDocumentEntry,
+  extractTextFromBuffer
+} = require('../utils/documentContext');
 
 const router = express.Router();
+
+// In-memory multer for chat-embedded doc uploads (max 5 MB)
+const chatUpload = multer({
+  storage: multer.memoryStorage(),
+  limits : { fileSize: 5 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const ok = ['application/pdf','text/plain','image/jpeg','image/png','image/jpg']
+      .includes(file.mimetype);
+    cb(ok ? null : new Error('Only PDF/TXT/JPG/PNG allowed.'), ok);
+  }
+});
 
 // ── POST /api/chat/message ────────────────────────────────────
 router.post('/message', auth, async (req, res) => {
@@ -26,10 +44,14 @@ router.post('/message', auth, async (req, res) => {
     // Add current user message
     contextWindow.push({ role: 'user', content: message });
 
-    console.log(`[CHAT] User: ${message.slice(0,60)}... | Context: ${contextWindow.length} msgs`);
+    console.log(`[CHAT] User: ${message.slice(0,60)}... | Context: ${contextWindow.length} msgs | Lang: ${language}`);
 
-    // Get AI response - Grok will now have full conversation context
-    const aiResponse = await getAIResponse(contextWindow, taxContext);
+    // Get AI response - passes language + userId for pre-processing layer
+    const aiResponse = await getAIResponse(
+      contextWindow,
+      taxContext,
+      { language, userId: req.userId }
+    );
 
     if (!aiResponse) {
       return res.status(500).json({ error: 'Failed to get response from AI. Please try again.' });
@@ -61,6 +83,46 @@ router.post('/message', auth, async (req, res) => {
     console.error('[CHAT] Error:', err.message);
     res.status(500).json({ error: 'Chat failed.', message: err.message });
   }
+});
+
+// ── POST /api/chat/upload-doc ────────────────────────────────
+// Upload a document in-chat; extracted text stored per-user in memory
+router.post('/upload-doc', auth, chatUpload.single('document'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+
+    const text = extractTextFromBuffer(
+      req.file.buffer,
+      req.file.mimetype,
+      req.file.originalname
+    );
+
+    storeDocumentText(req.userId, req.file.originalname, text);
+
+    res.json({
+      success  : true,
+      filename : req.file.originalname,
+      size     : req.file.size,
+      preview  : text.slice(0, 200) + (text.length > 200 ? '…' : ''),
+      message  : '✅ Document uploaded! I will use this context to answer your next questions.'
+    });
+  } catch (err) {
+    console.error('[CHAT/upload-doc]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DELETE /api/chat/clear-doc ────────────────────────────────
+// Remove stored document context for the current user
+router.delete('/clear-doc', auth, (req, res) => {
+  clearDocumentText(req.userId);
+  res.json({ success: true, message: 'Document context cleared.' });
+});
+
+// ── GET /api/chat/doc-status ──────────────────────────────────
+router.get('/doc-status', auth, (req, res) => {
+  const entry = getDocumentEntry(req.userId);
+  res.json({ hasDocument: !!entry, document: entry ? { filename: entry.filename, uploadedAt: entry.uploadedAt } : null });
 });
 
 // ── GET /api/chat/sessions ────────────────────────────────────

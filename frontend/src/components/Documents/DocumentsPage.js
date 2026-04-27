@@ -235,7 +235,7 @@ const getMockData = (docType) => ({
   filename:'demo_document.pdf', type:docType,
   note:'⚠️ This is simulated extraction for demo purposes only.',
   extractedData: docType === 'Form 16' ? {
-    documentType:'Form 16 (Part A & B)', financialYear:'2024-25',
+    documentType:'Form 16 (Part A & B)', financialYear:'2026-27',
     employerName:'Infosys Limited', employerPAN:'AABCI1234C',
     employeePAN:'ABCDE1234F', grossSalary:1200000,
     standardDeduction:50000, professionalTax:2400,
@@ -244,7 +244,7 @@ const getMockData = (docType) => ({
     netTaxableIncome:792600,
     autoFillData:{ grossIncome:1200000, deductions:{ section80C:150000, section80D:25000, hra:120000, standardDeduction:50000 }, tdsDeducted:72000 }
   } : {
-    documentType:docType, financialYear:'2024-25',
+    documentType:docType, financialYear:'2026-27',
     panNumber:'ABCDE1234F', totalTaxPaid:75200, tdsDeducted:72000
   }
 });

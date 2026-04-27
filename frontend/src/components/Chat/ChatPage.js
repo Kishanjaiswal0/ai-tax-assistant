@@ -3,8 +3,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { chatAPI } from '../../utils/api';
 import { useAuth } from '../../context/AuthContext';
-import { detectLanguage, isHindiOrHinglish } from '../../utils/languageDetection';
-import { speak, stopSpeech, isTTSSupported } from '../../utils/textToSpeech';
+import { detectLanguage } from '../../utils/languageDetection';
+import { speak, stopSpeech, isTTSSupported, resolveVoiceLocale, getSpeechRecognitionLocale } from '../../utils/textToSpeech';
 import toast from 'react-hot-toast';
 
 const WELCOME = `**Namaste! 🙏 I'm TaxBot, your AI Tax Assistant for India.**
@@ -41,7 +41,6 @@ export default function ChatPage() {
   const [sessionId,      setSessionId]      = useState(null);
   const [taxContext,     setTaxContext]     = useState({});
   const [isSpeaking,     setIsSpeaking]     = useState(false);
-  const [detectedLang,   setDetectedLang]   = useState('en');
   const [listening,      setListening]      = useState(false);
   const [showQuick,      setShowQuick]      = useState(true);
   const [sidebarOpen,    setSidebarOpen]    = useState(true);
@@ -49,9 +48,14 @@ export default function ChatPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [showDeleteAll,  setShowDeleteAll]  = useState(false);
   const [hoveredChat,    setHoveredChat]    = useState(null);
-  const bottomRef = useRef(null);
-  const inputRef  = useRef(null);
-  const recogRef  = useRef(null);
+  const bottomRef    = useRef(null);
+  const inputRef     = useRef(null);
+  const recogRef     = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Document context state
+  const [docUploading, setDocUploading] = useState(false);
+  const [uploadedDoc,  setUploadedDoc]  = useState(null); // { filename, uploadedAt }
 
   // Load chat history on mount
   useEffect(() => {
@@ -144,7 +148,7 @@ export default function ChatPage() {
     if (!SR) { toast.error('Voice not supported in this browser'); return; }
 
     const recog = new SR();
-    recog.lang           = lang === 'hi' ? 'hi-IN' : 'en-IN';
+    recog.lang           = getSpeechRecognitionLocale(responseLanguage);
     recog.interimResults = false;
     recog.maxAlternatives = 1;
 
@@ -158,12 +162,46 @@ export default function ChatPage() {
 
     recog.start();
     recogRef.current = recog;
-  }, [lang]);
+  }, [responseLanguage]);
 
   const stopVoice = useCallback(() => {
     recogRef.current?.stop();
     setListening(false);
   }, []);
+
+  // ── Document upload helpers ───────────────────────────────────
+  const handleDocUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // reset so same file can be re-selected
+    setDocUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('document', file);
+      const { data } = await chatAPI.uploadDoc(fd);
+      setUploadedDoc({ filename: data.filename, uploadedAt: new Date().toISOString() });
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `📎 **Document uploaded:** \`${data.filename}\`\n\n${data.message}\n\n> **Preview:** ${data.preview}`
+      }]);
+      toast.success(`"${data.filename}" ready for Q&A!`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Document upload failed');
+    } finally {
+      setDocUploading(false);
+    }
+  };
+
+  const clearUploadedDoc = async () => {
+    try {
+      await chatAPI.clearDoc();
+      setUploadedDoc(null);
+      toast.success('Document context cleared');
+    } catch (err) {
+      toast.error('Failed to clear document');
+    }
+  };
+  // ─────────────────────────────────────────────────────────────
 
   const sendMessage = async (text) => {
     const msg = (text || input).trim();
@@ -171,7 +209,7 @@ export default function ChatPage() {
 
     // Detect input language
     const detected = detectLanguage(msg);
-    setDetectedLang(detected);
+  
 
     // Determine response language
     let respLang = responseLanguage;
@@ -207,7 +245,7 @@ export default function ChatPage() {
           .replace(/\n/g, ' ')
           .slice(0, 500); // Limit length for TTS
         
-        speak(cleanText, respLang === 'hi' ? 'hi-IN' : 'en-IN', () => {
+        speak(cleanText, resolveVoiceLocale(respLang), () => {
           setIsSpeaking(false);
         });
       }
@@ -643,6 +681,7 @@ export default function ChatPage() {
               <option value="en">🇺🇸 English</option>
               <option value="hi">🇮🇳 हिंदी</option>
               <option value="bhojpuri">🎭 भोजपुरी</option>
+              <option value="punjabi">🟡 ਪੰਜਾਬੀ</option>
             </select>
 
             {/* Theme Selector */}
@@ -746,8 +785,72 @@ export default function ChatPage() {
           </div>
         )}
 
+        {/* ── Document Context Status Bar ───────────────────────── */}
+        {uploadedDoc && (
+          <div style={{
+            padding:'7px 20px',
+            background:'rgba(74,222,128,.07)',
+            borderTop:'1px solid rgba(74,222,128,.25)',
+            display:'flex', gap:'10px', alignItems:'center',
+            fontSize:'12px', color:'var(--text-secondary)'
+          }}>
+            <span style={{ color:'var(--success)' }}>📄</span>
+            <span style={{ fontWeight:500, color:'var(--text-primary)', maxWidth:'260px',
+              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {uploadedDoc.filename}
+            </span>
+            <span style={{ color:'var(--text-muted)', fontSize:'11px' }}>
+              · Active document context
+            </span>
+            <button
+              onClick={clearUploadedDoc}
+              title="Remove document context"
+              style={{
+                marginLeft:'auto', background:'transparent', border:'none',
+                color:'var(--danger)', cursor:'pointer', fontSize:'11px',
+                fontWeight:500, padding:'2px 6px', borderRadius:'4px',
+                transition:'all .15s'
+              }}
+              onMouseEnter={e => e.currentTarget.style.background='rgba(248,113,113,.1)'}
+              onMouseLeave={e => e.currentTarget.style.background='transparent'}
+            >✕ Remove</button>
+          </div>
+        )}
+
         {/* Input bar */}
         <div className="chat-input-bar">
+
+          {/* Hidden file input for document upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.txt,.jpg,.jpeg,.png"
+            style={{ display:'none' }}
+            onChange={handleDocUpload}
+          />
+
+          {/* 📎 Document upload button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={docUploading || loading}
+            title={uploadedDoc ? `Document: ${uploadedDoc.filename} (click to replace)` : 'Upload document (PDF/TXT/Image)'}
+            style={{
+              width:'40px', height:'40px', borderRadius:'10px', border:'none',
+              cursor: docUploading ? 'wait' : 'pointer',
+              fontSize:'18px', transition:'all .2s', flexShrink:0,
+              background: uploadedDoc
+                ? 'rgba(74,222,128,.15)'
+                : docUploading ? 'rgba(56,189,248,.1)' : 'var(--bg-card)',
+              color: uploadedDoc ? 'var(--success)'
+                : docUploading ? 'var(--accent)' : 'var(--text-secondary)',
+              animation: docUploading ? 'pulse 1s infinite' : 'none'
+            }}
+            onMouseEnter={e => { if (!docUploading) e.currentTarget.style.background='rgba(56,189,248,.12)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = uploadedDoc ? 'rgba(74,222,128,.15)' : 'var(--bg-card)'; }}
+          >
+            {docUploading ? '⏳' : uploadedDoc ? '📄' : '📎'}
+          </button>
+
           <div style={{ position:'relative', flex:1 }}>
             <textarea
               ref={inputRef}
@@ -755,7 +858,13 @@ export default function ChatPage() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
-              placeholder={lang === 'hi' ? 'टैक्स के बारे में पूछें…' : 'Ask about taxes, deductions, ITR filing… (Enter to send)'}
+              placeholder={
+                responseLanguage === 'hi'       ? 'टैक्स के बारे में पूछें…' :
+                responseLanguage === 'bhojpuri' ? 'Tax ke baare mein puchen… (Bhojpuri)' :
+                responseLanguage === 'punjabi'  ? 'ਟੈਕਸ ਬਾਰੇ ਪੁੱਛੋ… (Punjabi)' :
+                uploadedDoc ? 'Ask about your uploaded document or any tax question…' :
+                'Ask about taxes, deductions, ITR filing… (Enter to send)'
+              }
               rows={1}
               disabled={loading}
             />
@@ -772,7 +881,12 @@ export default function ChatPage() {
               animation: listening ? 'pulse 1s infinite' : 'none',
               flexShrink:0
             }}
-            title={listening ? 'Stop recording' : 'Voice input'}
+            title={listening ? 'Stop recording' : `Voice input (${
+              responseLanguage === 'hi' ? 'हिंदी' :
+              responseLanguage === 'bhojpuri' ? 'भोजपुरी' :
+              responseLanguage === 'punjabi'  ? 'ਪੰਜਾਬੀ' :
+              'English'
+            })`}
           >
             {listening ? '⏹' : '🎤'}
           </button>

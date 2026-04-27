@@ -15,9 +15,9 @@ const quickActions = [
 
 const tips = [
   { icon:'💡', text:'No tax up to ₹7 Lakh in New Regime' },
-  { icon:'📌', text:'New regime standard deduction raised to ₹75,000 in Budget 2024' },
+  { icon:'📌', text:'New regime standard deduction raised to ₹75,000 in Budget 2026' },
   { icon:'🚀', text:'NPS gives extra ₹50K deduction under 80CCD(1B) – over 80C limit!' },
-  { icon:'📅', text:'ITR filing deadline: July 31, 2025 for individuals' },
+  { icon:'📅', text:'ITR filing deadline: July 31, 2026 for individuals (FY 2026-27)' },
   { icon:'🏦', text:'ELSS has lowest lock-in (3 yrs) among 80C options with best returns' },
   { icon:'🏠', text:'Home loan interest up to ₹2L deductible under Section 24b' },
 ];
@@ -81,7 +81,7 @@ export default function Dashboard() {
             { icon:'💬', label:'Chat Sessions', val: sessions.length,  bg:'rgba(56,189,248,.12)' },
             { icon:'📅', label:'Days to Deadline', val:'97',           bg:'rgba(248,113,113,.12)' },
             { icon:'🏛️', label:'CAs Available',   val:'50+',           bg:'rgba(52,211,153,.12)' },
-            { icon:'📋', label:'FY',               val:'2024-25',       bg:'rgba(167,139,250,.12)' },
+            { icon:'📋', label:'FY',               val:'2026-27',       bg:'rgba(167,139,250,.12)' },
           ].map(s => (
             <div className="stat" key={s.label}>
               <div className="stat-icon" style={{ background:s.bg }}>{s.icon}</div>
