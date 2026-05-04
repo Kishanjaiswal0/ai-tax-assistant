@@ -20,9 +20,7 @@ I can help you with:
 - Your annual income (e.g., "I earn ₹12 lakh salary")
 - Your age group and major investments
 
-What's your tax question today?
-
-⚠️ *This is AI guidance only. Consult a CA for final filing.*`;
+What's your tax question today?`;
 
 const QUICK_QUESTIONS = [
   '🧮 Calculate tax for ₹10 lakh income',
@@ -35,27 +33,27 @@ const QUICK_QUESTIONS = [
 
 export default function ChatPage() {
   const { user, voiceEnabled, responseLanguage, toggleVoice, setRespLang, theme, setCustomTheme } = useAuth();
-  const [messages,       setMessages]       = useState([{ role:'assistant', content:WELCOME }]);
-  const [input,          setInput]          = useState('');
-  const [loading,        setLoading]        = useState(false);
-  const [sessionId,      setSessionId]      = useState(null);
-  const [taxContext,     setTaxContext]     = useState({});
-  const [isSpeaking,     setIsSpeaking]     = useState(false);
-  const [listening,      setListening]      = useState(false);
-  const [showQuick,      setShowQuick]      = useState(true);
-  const [sidebarOpen,    setSidebarOpen]    = useState(true);
-  const [chatHistory,    setChatHistory]    = useState([]);
+  const [messages, setMessages] = useState([{ role: 'assistant', content: WELCOME }]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [taxContext, setTaxContext] = useState({});
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [showQuick, setShowQuick] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [chatHistory, setChatHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [showDeleteAll,  setShowDeleteAll]  = useState(false);
-  const [hoveredChat,    setHoveredChat]    = useState(null);
-  const bottomRef    = useRef(null);
-  const inputRef     = useRef(null);
-  const recogRef     = useRef(null);
+  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [hoveredChat, setHoveredChat] = useState(null);
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+  const recogRef = useRef(null);
   const fileInputRef = useRef(null);
 
   // Document context state
   const [docUploading, setDocUploading] = useState(false);
-  const [uploadedDoc,  setUploadedDoc]  = useState(null); // { filename, uploadedAt }
+  const [uploadedDoc, setUploadedDoc] = useState(null); // { filename, uploadedAt }
 
   // Load chat history on mount
   useEffect(() => {
@@ -63,8 +61,8 @@ export default function ChatPage() {
   }, []);
 
   // Auto-scroll to bottom
-  useEffect(() => { 
-    bottomRef.current?.scrollIntoView({ behavior:'smooth' }); 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   // Cleanup: Stop voice when exiting chatbot screen
@@ -94,7 +92,7 @@ export default function ChatPage() {
     try {
       const { data } = await chatAPI.session(sid);
       if (data.chat) {
-        setMessages(data.chat.messages || [{ role:'assistant', content:WELCOME }]);
+        setMessages(data.chat.messages || [{ role: 'assistant', content: WELCOME }]);
         setSessionId(sid);
         setShowQuick(false);
         setTaxContext(data.chat.taxContext || {});
@@ -148,13 +146,13 @@ export default function ChatPage() {
     if (!SR) { toast.error('Voice not supported in this browser'); return; }
 
     const recog = new SR();
-    recog.lang           = getSpeechRecognitionLocale(responseLanguage);
+    recog.lang = getSpeechRecognitionLocale(responseLanguage);
     recog.interimResults = false;
     recog.maxAlternatives = 1;
 
-    recog.onstart  = () => setListening(true);
-    recog.onend    = () => setListening(false);
-    recog.onerror  = () => { setListening(false); toast.error('Voice recognition error'); };
+    recog.onstart = () => setListening(true);
+    recog.onend = () => setListening(false);
+    recog.onerror = () => { setListening(false); toast.error('Voice recognition error'); };
     recog.onresult = (e) => {
       const transcript = e.results[0][0].transcript;
       setInput(prev => prev + (prev ? ' ' : '') + transcript);
@@ -209,7 +207,7 @@ export default function ChatPage() {
 
     // Detect input language
     const detected = detectLanguage(msg);
-  
+
 
     // Determine response language
     let respLang = responseLanguage;
@@ -219,20 +217,20 @@ export default function ChatPage() {
 
     setInput('');
     setShowQuick(false);
-    setMessages(prev => [...prev, { role:'user', content:msg }]);
+    setMessages(prev => [...prev, { role: 'user', content: msg }]);
     setLoading(true);
 
     try {
       const { data } = await chatAPI.send({
-        message    : msg,
+        message: msg,
         sessionId,
-        history    : messages.slice(-10),
+        history: messages.slice(-10),
         taxContext,
-        language   : respLang
+        language: respLang
       });
 
       const response = data.response;
-      setMessages(prev => [...prev, { role:'assistant', content:response }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: response }]);
       if (data.sessionId && !sessionId) setSessionId(data.sessionId);
       loadChatHistory(); // Refresh history after new message
 
@@ -244,14 +242,14 @@ export default function ChatPage() {
           .replace(/[*_`]/g, '')
           .replace(/\n/g, ' ')
           .slice(0, 500); // Limit length for TTS
-        
+
         speak(cleanText, resolveVoiceLocale(respLang), () => {
           setIsSpeaking(false);
         });
       }
     } catch (err) {
       const errMsg = err.response?.data?.error || 'Failed to get response. Please try again.';
-      setMessages(prev => [...prev, { role:'assistant', content:`❌ ${errMsg}` }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `❌ ${errMsg}` }]);
       toast.error('Chat failed');
     } finally {
       setLoading(false);
@@ -264,7 +262,7 @@ export default function ChatPage() {
   };
 
   const newChat = () => {
-    setMessages([{ role:'assistant', content:WELCOME }]);
+    setMessages([{ role: 'assistant', content: WELCOME }]);
     setSessionId(null);
     setTaxContext({});
     setInput('');
@@ -273,7 +271,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div style={{ display:'flex', height:'100%', background:'var(--bg-base)' }}>
+    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-base)' }}>
       {/* ═══════════════════════════════ SIDEBAR ═══════════════════════════════ */}
       <div style={{
         width: sidebarOpen ? '280px' : '0',
@@ -298,7 +296,7 @@ export default function ChatPage() {
           <div style={{ fontWeight: '600', fontSize: '13px', color: 'var(--text-primary)' }}>
             💬 Chats
           </div>
-          <button 
+          <button
             onClick={() => setSidebarOpen(false)}
             style={{
               background: 'none',
@@ -375,7 +373,7 @@ export default function ChatPage() {
               fontSize: '12px',
               lineHeight: '1.5'
             }}>
-              No chats yet. <br/> Start a conversation to see history here.
+              No chats yet. <br /> Start a conversation to see history here.
             </div>
           ) : (
             chatHistory.map(chat => (
@@ -418,7 +416,7 @@ export default function ChatPage() {
                     {new Date(chat.updatedAt).toLocaleDateString()}
                   </div>
                 </div>
-                
+
                 {(hoveredChat === chat.sessionId || sessionId === chat.sessionId) && (
                   <button
                     onClick={(e) => deleteChatSession(e, chat.sessionId)}
@@ -588,10 +586,10 @@ export default function ChatPage() {
         background: 'var(--bg-base)'
       }}>
         {/* Header */}
-        <div className="page-header" style={{ flexShrink:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'12px' }}>
+        <div className="page-header" style={{ flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             {!sidebarOpen && (
-              <button 
+              <button
                 onClick={() => setSidebarOpen(true)}
                 style={{
                   background: 'none',
@@ -607,20 +605,22 @@ export default function ChatPage() {
               </button>
             )}
             <div style={{
-              width:'36px', height:'36px', borderRadius:'10px',
-              background:'var(--grad-accent)', display:'flex', alignItems:'center',
-              justifyContent:'center', fontSize:'18px'
-            }}>🤖</div>
+              width: '36px', height: '36px', borderRadius: '10px',
+              background: 'var(--grad-accent)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '18px', overflow: 'hidden'
+            }}>
+              <img src="/bot-avatar.png" alt="TaxBot" style={{width:'100%',height:'100%',objectFit:'cover'}} />
+            </div>
             <div>
               <div className="page-title">TaxBot AI</div>
               <div className="page-sub">
-                <span style={{ color:'var(--success)' }}>●</span> Online
+                <span style={{ color: 'var(--success)' }}>●</span> Online
               </div>
             </div>
           </div>
 
           {/* Controls: Voice, Language, Theme */}
-          <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             {/* Voice Toggle */}
             {isTTSSupported() && (
               <button
@@ -719,7 +719,7 @@ export default function ChatPage() {
           {messages.map((msg, i) => (
             <div key={i} className={`msg-row ${msg.role}`}>
               <div className="msg-avatar">
-                {msg.role === 'user' ? user?.name?.[0]?.toUpperCase() || '👤' : '🤖'}
+                {msg.role === 'user' ? user?.name?.[0]?.toUpperCase() || '👤' : <img src="/bot-avatar.png" alt="Bot" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'inherit'}} />}
               </div>
               <div className={`msg-bubble ${msg.role}`}>
                 {msg.role === 'assistant' ? (
@@ -727,7 +727,7 @@ export default function ChatPage() {
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
                 ) : (
-                  <span style={{ fontSize:'13.5px' }}>{msg.content}</span>
+                  <span style={{ fontSize: '13.5px' }}>{msg.content}</span>
                 )}
               </div>
             </div>
@@ -736,51 +736,51 @@ export default function ChatPage() {
           {/* Typing indicator */}
           {loading && (
             <div className="msg-row assistant">
-              <div className="msg-avatar">🤖</div>
+              <div className="msg-avatar"><img src="/bot-avatar.png" alt="Bot" style={{width:'100%',height:'100%',objectFit:'cover',borderRadius:'inherit'}} /></div>
               <div className="msg-bubble assistant">
-                <div className="typing-dots"><span/><span/><span/></div>
+                <div className="typing-dots"><span /><span /><span /></div>
               </div>
             </div>
           )}
 
           {/* Quick questions */}
           {showQuick && !loading && (
-            <div style={{ marginTop:'8px' }}>
-              <p style={{ fontSize:'12px', color:'var(--text-muted)', marginBottom:'8px' }}>
+            <div style={{ marginTop: '8px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                 💡 Try asking:
               </p>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {QUICK_QUESTIONS.map(q => (
                   <button key={q} onClick={() => sendMessage(q)} style={{
-                    padding:'7px 12px', borderRadius:'20px', border:'1px solid var(--border)',
-                    background:'var(--bg-card)', cursor:'pointer', fontSize:'12.5px',
-                    color:'var(--text-secondary)', transition:'all .2s', fontFamily:'DM Sans,sans-serif'
+                    padding: '7px 12px', borderRadius: '20px', border: '1px solid var(--border)',
+                    background: 'var(--bg-card)', cursor: 'pointer', fontSize: '12.5px',
+                    color: 'var(--text-secondary)', transition: 'all .2s', fontFamily: 'DM Sans,sans-serif'
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='var(--text-secondary)'; }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                   >{q}</button>
                 ))}
               </div>
             </div>
           )}
 
-          <div ref={bottomRef}/>
+          <div ref={bottomRef} />
         </div>
 
         {/* Tax Context Bar */}
         {(taxContext.income || taxContext.age) && (
           <div style={{
-            padding:'8px 20px', background:'rgba(56,189,248,.06)',
-            borderTop:'1px solid var(--border)', display:'flex', gap:'12px',
-            fontSize:'12px', color:'var(--text-secondary)', alignItems:'center'
+            padding: '8px 20px', background: 'rgba(56,189,248,.06)',
+            borderTop: '1px solid var(--border)', display: 'flex', gap: '12px',
+            fontSize: '12px', color: 'var(--text-secondary)', alignItems: 'center'
           }}>
             <span>📌 Context:</span>
-            {taxContext.income && <span className="badge badge-blue">Income: ₹{(taxContext.income/100000).toFixed(1)}L</span>}
+            {taxContext.income && <span className="badge badge-blue">Income: ₹{(taxContext.income / 100000).toFixed(1)}L</span>}
             {taxContext.age && <span className="badge badge-blue">Age: {taxContext.age}</span>}
             {taxContext.regime && <span className="badge badge-blue">Regime: {taxContext.regime}</span>}
             <button onClick={() => setTaxContext({})} style={{
-              marginLeft:'auto', background:'transparent', border:'none',
-              color:'var(--text-muted)', cursor:'pointer', fontSize:'11px'
+              marginLeft: 'auto', background: 'transparent', border: 'none',
+              color: 'var(--text-muted)', cursor: 'pointer', fontSize: '11px'
             }}>✕ Clear</button>
           </div>
         )}
@@ -788,31 +788,33 @@ export default function ChatPage() {
         {/* ── Document Context Status Bar ───────────────────────── */}
         {uploadedDoc && (
           <div style={{
-            padding:'7px 20px',
-            background:'rgba(74,222,128,.07)',
-            borderTop:'1px solid rgba(74,222,128,.25)',
-            display:'flex', gap:'10px', alignItems:'center',
-            fontSize:'12px', color:'var(--text-secondary)'
+            padding: '7px 20px',
+            background: 'rgba(74,222,128,.07)',
+            borderTop: '1px solid rgba(74,222,128,.25)',
+            display: 'flex', gap: '10px', alignItems: 'center',
+            fontSize: '12px', color: 'var(--text-secondary)'
           }}>
-            <span style={{ color:'var(--success)' }}>📄</span>
-            <span style={{ fontWeight:500, color:'var(--text-primary)', maxWidth:'260px',
-              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            <span style={{ color: 'var(--success)' }}>📄</span>
+            <span style={{
+              fontWeight: 500, color: 'var(--text-primary)', maxWidth: '260px',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+            }}>
               {uploadedDoc.filename}
             </span>
-            <span style={{ color:'var(--text-muted)', fontSize:'11px' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>
               · Active document context
             </span>
             <button
               onClick={clearUploadedDoc}
               title="Remove document context"
               style={{
-                marginLeft:'auto', background:'transparent', border:'none',
-                color:'var(--danger)', cursor:'pointer', fontSize:'11px',
-                fontWeight:500, padding:'2px 6px', borderRadius:'4px',
-                transition:'all .15s'
+                marginLeft: 'auto', background: 'transparent', border: 'none',
+                color: 'var(--danger)', cursor: 'pointer', fontSize: '11px',
+                fontWeight: 500, padding: '2px 6px', borderRadius: '4px',
+                transition: 'all .15s'
               }}
-              onMouseEnter={e => e.currentTarget.style.background='rgba(248,113,113,.1)'}
-              onMouseLeave={e => e.currentTarget.style.background='transparent'}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(248,113,113,.1)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
             >✕ Remove</button>
           </div>
         )}
@@ -825,7 +827,7 @@ export default function ChatPage() {
             ref={fileInputRef}
             type="file"
             accept=".pdf,.txt,.jpg,.jpeg,.png"
-            style={{ display:'none' }}
+            style={{ display: 'none' }}
             onChange={handleDocUpload}
           />
 
@@ -835,9 +837,9 @@ export default function ChatPage() {
             disabled={docUploading || loading}
             title={uploadedDoc ? `Document: ${uploadedDoc.filename} (click to replace)` : 'Upload document (PDF/TXT/Image)'}
             style={{
-              width:'40px', height:'40px', borderRadius:'10px', border:'none',
+              width: '40px', height: '40px', borderRadius: '10px', border: 'none',
               cursor: docUploading ? 'wait' : 'pointer',
-              fontSize:'18px', transition:'all .2s', flexShrink:0,
+              fontSize: '18px', transition: 'all .2s', flexShrink: 0,
               background: uploadedDoc
                 ? 'rgba(74,222,128,.15)'
                 : docUploading ? 'rgba(56,189,248,.1)' : 'var(--bg-card)',
@@ -845,13 +847,13 @@ export default function ChatPage() {
                 : docUploading ? 'var(--accent)' : 'var(--text-secondary)',
               animation: docUploading ? 'pulse 1s infinite' : 'none'
             }}
-            onMouseEnter={e => { if (!docUploading) e.currentTarget.style.background='rgba(56,189,248,.12)'; }}
+            onMouseEnter={e => { if (!docUploading) e.currentTarget.style.background = 'rgba(56,189,248,.12)'; }}
             onMouseLeave={e => { e.currentTarget.style.background = uploadedDoc ? 'rgba(74,222,128,.15)' : 'var(--bg-card)'; }}
           >
             {docUploading ? '⏳' : uploadedDoc ? '📄' : '📎'}
           </button>
 
-          <div style={{ position:'relative', flex:1 }}>
+          <div style={{ position: 'relative', flex: 1 }}>
             <textarea
               ref={inputRef}
               className="chat-textarea"
@@ -859,11 +861,11 @@ export default function ChatPage() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKey}
               placeholder={
-                responseLanguage === 'hi'       ? 'टैक्स के बारे में पूछें…' :
-                responseLanguage === 'bhojpuri' ? 'Tax ke baare mein puchen… (Bhojpuri)' :
-                responseLanguage === 'punjabi'  ? 'ਟੈਕਸ ਬਾਰੇ ਪੁੱਛੋ… (Punjabi)' :
-                uploadedDoc ? 'Ask about your uploaded document or any tax question…' :
-                'Ask about taxes, deductions, ITR filing… (Enter to send)'
+                responseLanguage === 'hi' ? 'टैक्स के बारे में पूछें…' :
+                  responseLanguage === 'bhojpuri' ? 'Tax ke baare mein puchen… (Bhojpuri)' :
+                    responseLanguage === 'punjabi' ? 'ਟੈਕਸ ਬਾਰੇ ਪੁੱਛੋ… (Punjabi)' :
+                      uploadedDoc ? 'Ask about your uploaded document or any tax question…' :
+                        'Ask about taxes, deductions, ITR filing… (Enter to send)'
               }
               rows={1}
               disabled={loading}
@@ -874,19 +876,18 @@ export default function ChatPage() {
           <button
             onClick={listening ? stopVoice : startVoice}
             style={{
-              width:'40px', height:'40px', borderRadius:'10px', border:'none',
-              cursor:'pointer', fontSize:'18px', transition:'all .2s',
+              width: '40px', height: '40px', borderRadius: '10px', border: 'none',
+              cursor: 'pointer', fontSize: '18px', transition: 'all .2s',
               background: listening ? 'rgba(248,113,113,.2)' : 'var(--bg-card)',
               color: listening ? 'var(--danger)' : 'var(--text-secondary)',
               animation: listening ? 'pulse 1s infinite' : 'none',
-              flexShrink:0
+              flexShrink: 0
             }}
-            title={listening ? 'Stop recording' : `Voice input (${
-              responseLanguage === 'hi' ? 'हिंदी' :
-              responseLanguage === 'bhojpuri' ? 'भोजपुरी' :
-              responseLanguage === 'punjabi'  ? 'ਪੰਜਾਬੀ' :
-              'English'
-            })`}
+            title={listening ? 'Stop recording' : `Voice input (${responseLanguage === 'hi' ? 'हिंदी' :
+                responseLanguage === 'bhojpuri' ? 'भोजपुरी' :
+                  responseLanguage === 'punjabi' ? 'ਪੰਜਾਬੀ' :
+                    'English'
+              })`}
           >
             {listening ? '⏹' : '🎤'}
           </button>
@@ -899,12 +900,10 @@ export default function ChatPage() {
 
         {/* Bottom disclaimer */}
         <div style={{
-          padding:'6px 20px', fontSize:'11px', color:'var(--text-muted)',
-          background:'var(--bg-surface)', textAlign:'center', borderTop:'1px solid var(--border)'
+          padding: '6px 20px', fontSize: '11px', color: 'var(--text-muted)',
+          background: 'var(--bg-surface)', textAlign: 'center', borderTop: '1px solid var(--border)'
         }}>
-          ⚠️ AI guidance only · Not a substitute for professional CA advice
-          &nbsp;|&nbsp;
-          <a href="https://www.incometax.gov.in" target="_blank" rel="noopener noreferrer" style={{ color:'var(--accent)', textDecoration:'none' }}>
+          <a href="https://www.incometax.gov.in" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'none' }}>
             incometax.gov.in
           </a>
         </div>

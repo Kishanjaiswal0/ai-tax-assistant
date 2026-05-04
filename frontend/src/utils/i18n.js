@@ -29,7 +29,6 @@ const translations = {
     sendMessage    : 'Send',
     typeMessage    : 'Ask about taxes, deductions, ITR filing…',
     welcome        : 'Welcome back',
-    disclaimer     : 'This chatbot provides guidance only. Please consult a qualified CA for final tax filing.',
   },
   hi: {
     appName        : 'AI कर सहायक',
@@ -60,7 +59,6 @@ const translations = {
     sendMessage    : 'भेजें',
     typeMessage    : 'टैक्स, कटौती, ITR फाइलिंग के बारे में पूछें…',
     welcome        : 'वापस स्वागत है',
-    disclaimer     : 'यह चैटबॉट केवल मार्गदर्शन प्रदान करता है। अंतिम टैक्स फाइलिंग के लिए CA से परामर्श लें।',
   }
 };
 

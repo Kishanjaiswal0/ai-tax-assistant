@@ -28,11 +28,11 @@ CONVERSATION STYLE:
 - Use ₹ symbol and lakh/crore for amounts
 - Format responses with emoji bullets and clear sections
 - Ask clarifying questions when information is incomplete
-- Always end tax advice with: "⚠️ This is AI guidance only. Consult a CA for final filing."
 - Suggest CA consultation for complex cases (income >20L, foreign income, capital gains, business)
 - Use tables and examples to explain concepts
 - Keep responses conversational but informative
-- Remember context from previous messages in the conversation`;
+- Remember context from previous messages in the conversation.
+- IMPORTANT: When answering follow-up questions, DO NOT repeat the full explanation of the Old vs New Tax Regime unless explicitly asked. Only answer the specific follow-up question concisely.`;
 
 // ─── GROK API (Primary - Real conversational AI) ─────────────────────────────
 const callGrok = async (messages) => {
@@ -124,13 +124,18 @@ const callOllama = async (messages) => {
 };
 
 // ─── INTENT CLASSIFICATION (Tax-Related Filter) ───────────────
-const classifyQuery = async (userMessage) => {
+const classifyQuery = async (messages) => {
   const key = process.env.GROQ_API_KEY;
   if (!key || key === 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') {
     return 'TAX_RELATED'; // Default allow if API not configured
   }
 
+  // Build a short history string for the classifier
+  // We take the last 5 messages to provide enough context for follow-ups
+  const contextMessages = messages.slice(-5).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
+
   const classificationPrompt = `You are a classifier that determines if a user query is related to tax, finance, deductions, investments, or financial planning in India.
+Crucially, you must consider the conversation context. If the user's latest message is a follow-up question (like "explain in short", "give me more details", "what about the second option") to a previous tax-related discussion, it MUST be classified as TAX_RELATED.
 
 Tax-related topics include: income tax, ITR filing, deductions (80C, 80D, NPS, HRA), tax regimes, GST, capital gains, investments, financial planning, salary, income, rent, insurance, loans.
 
@@ -138,7 +143,8 @@ NOT tax-related: programming, OOP, movies, sports, general knowledge, cooking, t
 
 Respond with ONLY "TAX_RELATED" or "NOT_RELATED" - no explanation.
 
-User message: "${userMessage}"`;
+Conversation Context:
+${contextMessages}`;
 
   try {
     const res = await fetch(
@@ -152,7 +158,7 @@ User message: "${userMessage}"`;
         body    : JSON.stringify({
           model       : 'llama-3.3-70b-versatile',
           messages    : [{ role: 'user', content: classificationPrompt }],
-          temperature : 0.3,
+          temperature : 0.1,
           max_tokens  : 10,
           stream      : false
         }),
@@ -168,7 +174,9 @@ User message: "${userMessage}"`;
     const data = await res.json();
     const classification = data?.choices?.[0]?.message?.content?.trim().toUpperCase() || 'TAX_RELATED';
     
-    console.log(`[CLASSIFY] "${userMessage.slice(0, 50)}..." → ${classification}`);
+    // Fallback: If it still says NOT_RELATED, but the string is something that might be a follow-up, we can just allow it.
+    // However, LLM with context should be smart enough now.
+    console.log(`[CLASSIFY] context intent → ${classification}`);
     return classification;
   } catch (err) {
     console.warn(`[CLASSIFY] Error: ${err.message}, defaulting to TAX_RELATED`);
@@ -226,9 +234,7 @@ ${result.recommendation.message}
 
 💡 This calculation assumes **no deductions**. With 80C + NPS + 80D investments, Old Regime could save more!
 
-Want me to calculate with your actual deductions? Just share them!
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+Want me to calculate with your actual deductions? Just share them!`;
     }
   }
 
@@ -248,9 +254,7 @@ Want me to calculate with your actual deductions? Just share them!
 💡 **Best combo:** ELSS (₹75K) + PPF (₹75K) = ₹1.5L full 80C utilised
 
 🚀 **Bonus:** Invest ₹50,000 in **NPS** under **80CCD(1B)** – this is EXTRA over 80C!
-**Total possible deduction = ₹2 Lakh**
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+**Total possible deduction = ₹2 Lakh**`;
   }
 
   // NPS
@@ -271,9 +275,7 @@ For someone in 30% bracket:
 **How to open NPS:** 
 → Go to eNPS: enps.nsdl.com
 → Open Tier I account (tax benefits)
-→ Min ₹500/year contribution
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+→ Min ₹500/year contribution`;
   }
 
   // New regime
@@ -299,9 +301,7 @@ For someone in 30% bracket:
 
 📌 **New regime suits you if:** Total deductions < ₹3.75 Lakh (break-even point ~FY25)
 
-Use our **Tax Calculator** tab for your personal comparison! 
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+Use our **Tax Calculator** tab for your personal comparison!`;
   }
 
   // Old regime
@@ -324,9 +324,7 @@ Use our **Tax Calculator** tab for your personal comparison!
 - Section 24b: ₹2L home loan interest
 - 87A rebate: No tax if income ≤ ₹5L
 
-📌 **Old regime suits you if:** Total deductions > ₹3.75L
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+📌 **Old regime suits you if:** Total deductions > ₹3.75L`;
   }
 
   // HRA
@@ -351,9 +349,7 @@ Calculation:
 📌 **Remember:**
 - Keep rent receipts & rental agreement
 - Landlord PAN mandatory if annual rent > ₹1L
-- Only in Old Regime
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+- Only in Old Regime`;
   }
 
   // ITR forms
@@ -375,9 +371,7 @@ Calculation:
 - Revised return: **December 31, 2025**
 
 🔗 **File at:** [incometax.gov.in](https://www.incometax.gov.in)
-🔗 **Download Form 26AS:** [TRACES Portal](https://www.tdscpc.gov.in)
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+🔗 **Download Form 26AS:** [TRACES Portal](https://www.tdscpc.gov.in)`;
   }
 
   // Capital gains
@@ -402,9 +396,7 @@ Calculation:
 - Use tax harvesting: book ₹1.25L gains each March
 - Invest LTCG in 54EC bonds (₹50L limit) to save property tax
 
-**Need help with capital gains calculation?** Share details of your transactions!
-
-⚠️ *AI guidance only. Consult a CA for final filing.*`;
+**Need help with capital gains calculation?** Share details of your transactions!`;
   }
 
   // Default response
@@ -417,9 +409,7 @@ Calculation:
 🔹 **Capital Gains** – "Tax on selling mutual funds"
 🔹 **CA Help** – Go to **CA Consultation** tab to connect with experts
 
-Please try rephrasing your question or use the **Tax Calculator** tab for instant results!
-
-⚠️ *This is AI guidance only. Consult a CA for final tax filing.*`;
+Please try rephrasing your question or use the **Tax Calculator** tab for instant results!`;
 };
 
 // ─── MAIN FUNCTION ────────────────────────────────────────────
@@ -441,9 +431,8 @@ const getAIResponse = async (messages, context = {}, options = {}) => {
   // ─────────────────────────────────────────────────────────────────────────
 
   // Step 1: Classify query intent (tax-related or not)
-  // NOTE: Use the ORIGINAL last user message for classification (no instruction noise)
-  const userMessage = messages[messages.length - 1]?.content || '';
-  const classification = await classifyQuery(userMessage);
+  // NOTE: Use the original messages array for classification (no instruction noise from language processing if possible, but here we pass the base messages)
+  const classification = await classifyQuery(messages);
   
   if (classification === 'NOT_RELATED') {
     return `I am a Tax Assistant AI and can only help with tax, income, deductions, investments, and financial planning queries. Please ask a tax-related question! 📊
@@ -465,6 +454,7 @@ Examples of questions I can help with:
   if (ollama) return ollama;
 
   // Rule-based fallback uses the original user message (no prefix noise)
+  const userMessage = messages[messages.length - 1]?.content || '';
   return ruleBasedResponse(userMessage, context);
 };
 

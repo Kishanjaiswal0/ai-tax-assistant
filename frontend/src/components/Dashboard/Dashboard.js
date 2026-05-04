@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { chatAPI } from '../../utils/api';
+import { motion } from 'framer-motion';
 
 const quickActions = [
-  { icon:'🤖', label:'Chat with AI',    to:'/chat',       color:'rgba(56,189,248,.15)' },
+  { icon:<img src="/bot-avatar.png" alt="Bot" style={{width:'32px',height:'32px',borderRadius:'8px'}}/>, label:'Chat with AI',    to:'/chat',       color:'rgba(56,189,248,.15)' },
   { icon:'📊', label:'Calculate Tax',    to:'/calculator', color:'rgba(99,102,241,.15)' },
   { icon:'📈', label:'What-if Simulation',to:'/simulation',color:'rgba(52,211,153,.15)' },
   { icon:'🎯', label:'Goal Planning',    to:'/goals',      color:'rgba(251,191,36,.15)' },
@@ -51,16 +52,22 @@ export default function Dashboard() {
           </div>
           <div className="page-sub">Welcome to your AI Tax Dashboard</div>
         </div>
-        <button className="btn btn-accent btn-sm" onClick={() => nav('/chat')}>
-          🤖 Ask TaxBot
-        </button>
+        <motion.button 
+          className="btn btn-accent btn-sm" 
+          onClick={() => nav('/chat')} 
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', boxShadow: '0 4px 15px rgba(56,189,248,0.4)', border: '1px solid rgba(255,255,255,0.2)' }}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          animate={{ y: [0, -4, 0] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <img src="/bot-avatar.png" alt="Bot" style={{width:'24px',height:'24px',borderRadius:'8px'}}/> 
+          <span style={{ fontWeight: 600 }}>Ask TaxBot</span>
+        </motion.button>
       </div>
 
       <div className="page-body">
-        {/* Disclaimer */}
-        <div className="disclaimer">
-          ⚠️ This platform provides AI-powered tax guidance only. Always consult a qualified CA for final ITR filing.
-        </div>
+
 
         {/* Rotating tip */}
         <div style={{
