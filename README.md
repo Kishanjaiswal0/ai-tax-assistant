@@ -2,7 +2,7 @@
 
 ## 🌟 Project Overview
 Full-stack AI-powered Indian Income Tax assistant with:
-- 🤖 AI chatbot (HuggingFace / Ollama / Rule-based fallback)
+- 🤖 AI chatbot (Grok / Ollama / Rule-based fallback)
 - 📊 Tax Calculator (Old vs New Regime, FY 2024-25)
 - 🧠 Fuzzy Logic engine for regime recommendations
 - 📈 What-if Simulation with sliders
