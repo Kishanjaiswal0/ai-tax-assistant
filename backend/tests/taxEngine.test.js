@@ -82,3 +82,76 @@ test('negative gross income is rejected', () => {
     /grossIncome/
   );
 });
+
+const { calcDeductions } = require('../utils/taxEngine');
+
+test('FY2024-25 new regime marginal relief applies just above ₹7 lakh', () => {
+  const result = calculateTax({
+    grossIncome: 700001,
+    taxYear: 'FY2024-25'
+  });
+
+  assert.equal(result.newRegime.totalTax, 1);
+});
+
+test('FY2025-26 new regime marginal relief applies just above ₹12 lakh', () => {
+  const result = calculateTax({
+    grossIncome: 1200001,
+    taxYear: 'FY2025-26'
+  });
+
+  assert.equal(result.newRegime.totalTax, 1);
+});
+
+test('TY2026-27 new regime marginal relief applies just above ₹12 lakh', () => {
+  const result = calculateTax({
+    grossIncome: 1200001,
+    taxYear: 'TY2026-27'
+  });
+
+  assert.equal(result.newRegime.totalTax, 1);
+});
+
+test('Section 80C deduction is capped at ₹1.5 lakh in old regime', () => {
+  const result = calcDeductions(
+    { section80C: 200000 },
+    'old',
+    'FY2025-26'
+  );
+
+  assert.equal(result.section80C, 150000);
+});
+
+test('Section 80C deduction is not allowed in new regime', () => {
+  const result = calcDeductions(
+    { section80C: 150000 },
+    'new',
+    'FY2025-26'
+  );
+
+  assert.equal(result.section80C, 0);
+});
+
+test('Section 80D self/family deduction respects the non-senior limit', () => {
+  const result = calcDeductions(
+    { section80DSelfFamily: 40000 },
+    'old',
+    'FY2025-26'
+  );
+
+  assert.equal(result.section80DSelfFamily, 25000);
+});
+
+test('Standard deduction is not applied to non-salary income', () => {
+  const result = calcDeductions(
+    {
+      isSalariedOrPensioner: false,
+      salaryOrPensionIncome: 1000000
+    },
+    'new',
+    'FY2025-26'
+  );
+
+  assert.equal(result.standardDeduction, 0);
+});
+
