@@ -18,6 +18,8 @@ const consultationRoutes = require('./routes/consultation');
 const documentRoutes     = require('./routes/documents');
 
 const app = express();
+// Trust Render's reverse proxy
+app.set('trust proxy', 1);
 
 // ─── Rate Limiting ────────────────────────────────────────────
 const limiter = rateLimit({
