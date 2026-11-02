@@ -2,44 +2,177 @@
 // Complete Indian Tax Calculation Engine (FY 2024-25) + Fuzzy Logic
 // ============================================================
 
-// ─── OLD REGIME TAX (FY 2024-25) ──────────────────────────────
-const getOldRegimeBaseTax = (taxableIncome, age) => {
-  // Basic exemption limits
-  const exemption = age === 'above80' ? 500000 : age === '60to80' ? 300000 : 250000;
-  const net = Math.max(0, taxableIncome - exemption);
-  if (net === 0) return 0;
 
+// ─── VERSIONED TAX RULES ──────────────────────────────────────
+// Tax periods:
+// FY2024-25 = Financial Year 2024-25 (AY 2025-26)
+// FY2025-26 = Financial Year 2025-26 (AY 2026-27)
+// TY2026-27 = Tax Year 2026-27 under Income-tax Act, 2025
+
+const TAX_RULES = {
+  'FY2024-25': {
+    act: 'Income-tax Act, 1961',
+    oldRegime: {
+      below60: [
+        { limit: 250000, rate: 0 },
+        { limit: 500000, rate: 0.05 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ],
+      '60to80': [
+        { limit: 300000, rate: 0 },
+        { limit: 500000, rate: 0.05 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ],
+      above80: [
+        { limit: 500000, rate: 0 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ]
+    },
+    newRegime: [
+      { limit: 300000, rate: 0 },
+      { limit: 700000, rate: 0.05 },
+      { limit: 1000000, rate: 0.10 },
+      { limit: 1200000, rate: 0.15 },
+      { limit: 1500000, rate: 0.20 },
+      { limit: Infinity, rate: 0.30 }
+    ]
+  },
+
+  'FY2025-26': {
+    act: 'Income-tax Act, 1961',
+    oldRegime: {
+      below60: [
+        { limit: 250000, rate: 0 },
+        { limit: 500000, rate: 0.05 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ],
+      '60to80': [
+        { limit: 300000, rate: 0 },
+        { limit: 500000, rate: 0.05 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ],
+      above80: [
+        { limit: 500000, rate: 0 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ]
+    },
+    newRegime: [
+      { limit: 400000, rate: 0 },
+      { limit: 800000, rate: 0.05 },
+      { limit: 1200000, rate: 0.10 },
+      { limit: 1600000, rate: 0.15 },
+      { limit: 2000000, rate: 0.20 },
+      { limit: 2400000, rate: 0.25 },
+      { limit: Infinity, rate: 0.30 }
+    ]
+  },
+
+  'TY2026-27': {
+    act: 'Income-tax Act, 2025',
+    oldRegime: {
+  below60: [
+    { limit: 250000, rate: 0 },
+    { limit: 500000, rate: 0.05 },
+    { limit: 1000000, rate: 0.20 },
+    { limit: Infinity, rate: 0.30 }
+  ],
+  '60to80': [
+    { limit: 300000, rate: 0 },
+    { limit: 500000, rate: 0.05 },
+    { limit: 1000000, rate: 0.20 },
+    { limit: Infinity, rate: 0.30 }
+  ],
+  above80: [
+    { limit: 500000, rate: 0 },
+    { limit: 1000000, rate: 0.20 },
+    { limit: Infinity, rate: 0.30 }
+  ]
+},
+    newRegime: [
+      { limit: 400000, rate: 0 },
+      { limit: 800000, rate: 0.05 },
+      { limit: 1200000, rate: 0.10 },
+      { limit: 1600000, rate: 0.15 },
+      { limit: 2000000, rate: 0.20 },
+      { limit: 2400000, rate: 0.25 },
+      { limit: Infinity, rate: 0.30 }
+    ]
+  }
+};
+
+// Calculate progressive tax using an ordered slab table.
+const calculateSlabTax = (taxableIncome, slabs) => {
   let tax = 0;
-  // Slabs after exemption
-  if (net <= 250000)       tax = net * 0.05;
-  else if (net <= 500000)  tax = 12500  + (net - 250000) * 0.20;
-  else if (net <= 750000)  tax = 112500 + (net - 500000) * 0.20;
-  else if (net <= 1000000) tax = 162500 + (net - 750000) * 0.20;
-  else if (net <= 1250000) tax = 212500 + (net - 1000000) * 0.30;
-  else if (net <= 1500000) tax = 287500 + (net - 1250000) * 0.30;
-  else                     tax = 362500 + (net - 1500000) * 0.30;
+  let previousLimit = 0;
 
-  // Rebate u/s 87A: if income ≤ 5L, rebate up to ₹12,500
-  if (taxableIncome <= 500000) tax = Math.max(0, tax - 12500);
+  for (const slab of slabs) {
+    const taxableInSlab = Math.max(
+      0,
+      Math.min(taxableIncome, slab.limit) - previousLimit
+    );
+
+    tax += taxableInSlab * slab.rate;
+    previousLimit = slab.limit;
+
+    if (taxableIncome <= slab.limit) break;
+  }
+
   return Math.round(tax);
 };
 
-// ─── NEW REGIME TAX (FY 2024-25, Budget 2024) ─────────────────
-const getNewRegimeBaseTax = (income) => {
-  // Standard deduction ₹75,000 already applied before calling this
-  let tax = 0;
-  if (income <= 300000)       tax = 0;
-  else if (income <= 700000)  tax = (income - 300000) * 0.05;
-  else if (income <= 1000000) tax = 20000 + (income - 700000) * 0.10;
-  else if (income <= 1200000) tax = 50000 + (income - 1000000) * 0.15;
-  else if (income <= 1500000) tax = 80000 + (income - 1200000) * 0.20;
-  else                        tax = 140000 + (income - 1500000) * 0.30;
 
-  // Rebate u/s 87A: No tax if income ≤ ₹7L in new regime
-  if (income <= 700000) tax = 0;
+// ─── VERSIONED OLD REGIME TAX ────────────────────────────────
+const getOldRegimeBaseTax = (
+  taxableIncome,
+  age,
+  taxYear = 'FY2024-25'
+) => {
+  const rules = TAX_RULES[taxYear] || TAX_RULES['FY2024-25'];
+
+  const slabs =
+    rules.oldRegime[age] || rules.oldRegime.below60;
+
+  let tax = calculateSlabTax(taxableIncome, slabs);
+
+  // Section 87A rebate for eligible resident individuals.
+  if (taxableIncome <= 500000) {
+    tax = Math.max(0, tax - 12500);
+  }
+
   return Math.round(tax);
 };
 
+
+// ─── VERSIONED NEW REGIME TAX ─────────────────────────────────
+const getNewRegimeBaseTax = (
+  taxableIncome,
+  taxYear = 'FY2024-25'
+) => {
+  const rules = TAX_RULES[taxYear] || TAX_RULES['FY2024-25'];
+
+  let tax = calculateSlabTax(taxableIncome, rules.newRegime);
+
+  // Rebate limits differ by tax period.
+  const rebateLimit = taxYear === 'FY2024-25'
+    ? 700000
+    : 1200000;
+
+  const maximumRebate = taxYear === 'FY2024-25'
+    ? 25000
+    : 60000;
+
+  if (taxableIncome <= rebateLimit) {
+    tax = Math.max(0, tax - maximumRebate);
+  }
+
+  return Math.round(tax);
+};
 // Add 4% Health & Education Cess
 const addCess = (baseTax) => Math.round(baseTax * 1.04);
 
@@ -61,18 +194,23 @@ const calcDeductions = (d = {}) => {
 };
 
 // ─── MAIN CALCULATION ─────────────────────────────────────────
-const calculateTax = ({ grossIncome, age = 'below60', deductions = {} }) => {
+const calculateTax = ({
+  grossIncome,
+  age = 'below60',
+  deductions = {},
+  taxYear = 'FY2024-25'
+}) => {
   const income = Number(grossIncome) || 0;
   const ded    = calcDeductions(deductions);
 
   // --- Old Regime ---
   const oldTaxableIncome = Math.max(0, income - ded.total);
-  const oldBaseTax       = getOldRegimeBaseTax(oldTaxableIncome, age);
+  const oldBaseTax = getOldRegimeBaseTax(oldTaxableIncome, age, taxYear);
   const oldTotalTax      = addCess(oldBaseTax);
 
   // --- New Regime (only ₹75,000 std deduction from Budget 2024) ---
   const newTaxableIncome = Math.max(0, income - 75000);
-  const newBaseTax       = getNewRegimeBaseTax(newTaxableIncome);
+ const newBaseTax = getNewRegimeBaseTax(newTaxableIncome, taxYear);
   const newTotalTax      = addCess(newBaseTax);
 
   const savings           = oldTotalTax - newTotalTax;
