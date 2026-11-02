@@ -37,7 +37,7 @@ CONVERSATION STYLE:
 // ─── GROK API (Primary - Real conversational AI) ─────────────────────────────
 const callGrok = async (messages) => {
   const key   = process.env.GROQ_API_KEY;
-  const model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+  const model = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
   if (!key || key === 'gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx') {
     console.warn('[AI] Grok API key not configured');
@@ -156,7 +156,7 @@ ${contextMessages}`;
           'Content-Type': 'application/json'
         },
         body    : JSON.stringify({
-          model       : 'llama-3.3-70b-versatile',
+          model       : process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
           messages    : [{ role: 'user', content: classificationPrompt }],
           temperature : 0.1,
           max_tokens  : 10,
