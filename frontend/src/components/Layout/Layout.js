@@ -8,6 +8,7 @@ const NAV_USER = [
   { to:'/',           icon:'🏠', key:'dashboard'   },
   { to:'/chat',       icon:'🤖', key:'chatbot'     },
   { to:'/calculator', icon:'📊', key:'calculator'  },
+  { to:'/tax-history', icon:'📚', key:'taxHistory', label:'Tax History' },
   { to:'/simulation', icon:'📈', key:'simulation'  },
   { to:'/goals',      icon:'🎯', key:'goalPlanning'},
   { to:'/documents',  icon:'📂', key:'documents'   },
