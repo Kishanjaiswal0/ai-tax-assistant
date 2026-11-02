@@ -259,9 +259,9 @@ export default function SimulationPage() {
                 >
                   <option value="resident">Resident</option>
                   <option value="non-resident">Non-Resident</option>
-                  <option value="rnor">
-                    Resident but Not Ordinarily Resident
-                  </option>
+                 <option value="not-ordinarily-resident">
+  Resident but Not Ordinarily Resident
+</option>
                 </select>
               </div>
 
