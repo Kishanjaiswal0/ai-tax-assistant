@@ -8,11 +8,21 @@ const router = express.Router();
 // ── POST /api/tax/calculate ───────────────────────────────────
 router.post('/calculate', auth, async (req, res) => {
   try {
-    const { grossIncome, age = 'below60', deductions = {} } = req.body;
+    const {
+  grossIncome,
+  age = 'below60',
+  deductions = {},
+  taxYear = 'FY2024-25'
+} = req.body;
     if (!grossIncome || isNaN(grossIncome) || Number(grossIncome) < 0)
       return res.status(400).json({ error: 'Valid grossIncome required.' });
 
-    const result = calculateTax({ grossIncome: Number(grossIncome), age, deductions });
+    const result = calculateTax({
+  grossIncome: Number(grossIncome),
+  age,
+  deductions,
+  taxYear
+});
     const tips   = optimizeDeductions(Number(grossIncome), deductions);
     res.json({ success: true, ...result, optimizationTips: tips });
   } catch (err) {
@@ -24,13 +34,21 @@ router.post('/calculate', auth, async (req, res) => {
 // What-if: pass array of scenarios, get results for each
 router.post('/simulate', auth, async (req, res) => {
   try {
-    const { scenarios = [] } = req.body;
+    const {
+  scenarios = [],
+  taxYear = 'FY2024-25'
+} = req.body;
     if (!Array.isArray(scenarios) || scenarios.length === 0)
       return res.status(400).json({ error: 'scenarios array required.' });
 
     const results = scenarios.map(s => ({
       label : s.label || 'Scenario',
-      ...calculateTax({ grossIncome: s.income, age: s.age || 'below60', deductions: s.deductions || {} })
+      ...calculateTax({
+  grossIncome: s.income,
+  age: s.age || 'below60',
+  deductions: s.deductions || {},
+  taxYear: s.taxYear || taxYear
+})
     }));
     res.json({ success: true, results });
   } catch (err) {
@@ -41,11 +59,20 @@ router.post('/simulate', auth, async (req, res) => {
 // ── POST /api/tax/goal-strategy ───────────────────────────────
 router.post('/goal-strategy', auth, async (req, res) => {
   try {
-    const { goal, income, currentDeductions = {} } = req.body;
+    const {
+  goal,
+  income,
+  currentDeductions = {},
+  taxYear = 'FY2024-25'
+} = req.body;
     if (!goal || !income) return res.status(400).json({ error: 'goal and income required.' });
 
     const strategy = getGoalStrategy(goal, Number(income), currentDeductions);
-    const current  = calculateTax({ grossIncome: Number(income), deductions: currentDeductions });
+    const current = calculateTax({
+  grossIncome: Number(income),
+  deductions: currentDeductions,
+  taxYear
+});
     res.json({ success: true, strategy, currentTax: current });
   } catch (err) {
     res.status(500).json({ error: err.message });
