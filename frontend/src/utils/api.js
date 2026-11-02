@@ -31,11 +31,17 @@ export const chatAPI = {
 };
 
 // Tax
+// Tax
 export const taxAPI = {
   calculate    : (d) => api.post('/api/tax/calculate', d),
-  simulate     : (d) => api.post('/api/tax/simulate',  d),
+  simulate     : (d) => api.post('/api/tax/simulate', d),
   goalStrategy : (d) => api.post('/api/tax/goal-strategy', d),
-  optimize     : (d) => api.post('/api/tax/optimize',  d),
+  optimize     : (d) => api.post('/api/tax/optimize', d),
+
+  // Tax Calculation History
+  history      : () => api.get('/api/tax/history'),
+  historyById  : (id) => api.get(`/api/tax/history/${id}`),
+  deleteHistory: (id) => api.delete(`/api/tax/history/${id}`),
 };
 
 // CA
