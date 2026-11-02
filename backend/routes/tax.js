@@ -1,9 +1,11 @@
 
 // routes/tax.js
 // Tax Calculation, Simulation, Goal Planning and Optimization
+// Includes persistent tax calculation history.
 
 const express = require('express');
 const { auth } = require('../middleware/auth');
+const TaxHistory = require('../models/TaxHistory');
 
 const {
   calculateTax,
@@ -53,6 +55,7 @@ router.post('/calculate', auth, async (req, res) => {
       });
     }
 
+    // Run the existing tax calculation engine.
     const result = calculateTax({
       grossIncome: Number(grossIncome),
       age,
@@ -68,16 +71,144 @@ router.post('/calculate', auth, async (req, res) => {
       'old'
     );
 
+    const oldTax = result.oldRegime.totalTax;
+    const newTax = result.newRegime.totalTax;
+
+    const recommendedRegime =
+      oldTax === newTax
+        ? 'equal'
+        : oldTax < newTax
+          ? 'old'
+          : 'new';
+
+    // Save history without interrupting the calculation
+    // if MongoDB is temporarily unavailable.
+    let historyId = null;
+    let historySaved = false;
+
+    try {
+      const savedRecord = await TaxHistory.create({
+        userId: req.userId,
+        taxYear,
+        grossIncome: Number(grossIncome),
+        age,
+        residentialStatus,
+        deductions,
+        oldRegime: result.oldRegime,
+        newRegime: result.newRegime,
+        recommendedRegime
+      });
+
+      historyId = savedRecord._id;
+      historySaved = true;
+
+    } catch (dbErr) {
+      console.error(
+        '[TAX/HISTORY SAVE]',
+        dbErr.message
+      );
+    }
+
     return res.json({
       success: true,
       ...result,
-      optimizationTips: tips
+      recommendedRegime,
+      optimizationTips: tips,
+      historyId,
+      historySaved
+    });
+
+  } catch (err) {
+    console.error('[TAX/CALCULATE]', err.message);
+
+    return res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// ─── GET /api/tax/history ──────────────────────────────────────
+
+router.get('/history', auth, async (req, res) => {
+  try {
+    const history = await TaxHistory.find({
+      userId: req.userId
+    })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .select('-__v');
+
+    return res.json({
+      success: true,
+      count: history.length,
+      history
+    });
+
+  } catch (err) {
+    console.error('[TAX/HISTORY]', err.message);
+
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve tax history.'
+    });
+  }
+});
+
+// ─── GET /api/tax/history/:id ──────────────────────────────────
+
+router.get('/history/:id', auth, async (req, res) => {
+  try {
+    const record = await TaxHistory.findOne({
+      _id: req.params.id,
+      userId: req.userId
+    }).select('-__v');
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tax calculation record not found.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      record
     });
 
   } catch (err) {
     return res.status(400).json({
       success: false,
-      error: err.message
+      error: 'Invalid record ID.'
+    });
+  }
+});
+
+// ─── DELETE /api/tax/history/:id ───────────────────────────────
+
+router.delete('/history/:id', auth, async (req, res) => {
+  try {
+    const record = await TaxHistory.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.userId
+    });
+
+    if (!record) {
+      return res.status(404).json({
+        success: false,
+        error: 'Tax calculation record not found.'
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Tax history record deleted.'
+    });
+
+  } catch (err) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid record ID.'
     });
   }
 });
@@ -113,9 +244,9 @@ router.post('/simulate', auth, async (req, res) => {
         );
       }
 
-      const deductions = scenario.deductions || {};
+      const scenarioDeductions = scenario.deductions || {};
 
-      if (!isValidDeductions(deductions)) {
+      if (!isValidDeductions(scenarioDeductions)) {
         throw new Error(
           `Invalid deductions in scenario ${index + 1}.`
         );
@@ -124,7 +255,7 @@ router.post('/simulate', auth, async (req, res) => {
       const result = calculateTax({
         grossIncome: Number(scenario.income),
         age: scenario.age || 'below60',
-        deductions,
+        deductions: scenarioDeductions,
         taxYear: scenario.taxYear || taxYear,
         residentialStatus:
           scenario.residentialStatus || residentialStatus
