@@ -1,13 +1,9 @@
-// utils/taxEngine.js
-// Complete Indian Tax Calculation Engine (FY 2024-25) + Fuzzy Logic
-// ============================================================
-
-
-// ─── VERSIONED TAX RULES ──────────────────────────────────────
-// Tax periods:
-// FY2024-25 = Financial Year 2024-25 (AY 2025-26)
-// FY2025-26 = Financial Year 2025-26 (AY 2026-27)
-// TY2026-27 = Tax Year 2026-27 under Income-tax Act, 2025
+// backend/utils/taxEngine.js
+// Indian individual income-tax estimator for supported periods.
+// IMPORTANT: This is an estimator for ordinary slab-rate income, not a complete ITR engine.
+// Special-rate income (capital gains, lottery, crypto/VDA, dividend, NRIs/DTAA, etc.),
+// losses, AMT, marginal relief on special-rate income and detailed property computations
+// must be calculated separately before using this for a filing/payment decision.
 
 const TAX_RULES = {
   'FY2024-25': {
@@ -38,7 +34,15 @@ const TAX_RULES = {
       { limit: 1200000, rate: 0.15 },
       { limit: 1500000, rate: 0.20 },
       { limit: Infinity, rate: 0.30 }
-    ]
+    ],
+    rebate: {
+      old: { limit: 500000, max: 12500 },
+      new: { limit: 700000, max: 25000 }
+    },
+    standardDeduction: {
+      old: 50000,
+      new: 75000
+    }
   },
 
   'FY2025-26': {
@@ -70,30 +74,38 @@ const TAX_RULES = {
       { limit: 2000000, rate: 0.20 },
       { limit: 2400000, rate: 0.25 },
       { limit: Infinity, rate: 0.30 }
-    ]
+    ],
+    rebate: {
+      old: { limit: 500000, max: 12500 },
+      new: { limit: 1200000, max: 60000 }
+    },
+    standardDeduction: {
+      old: 50000,
+      new: 75000
+    }
   },
 
   'TY2026-27': {
     act: 'Income-tax Act, 2025',
     oldRegime: {
-  below60: [
-    { limit: 250000, rate: 0 },
-    { limit: 500000, rate: 0.05 },
-    { limit: 1000000, rate: 0.20 },
-    { limit: Infinity, rate: 0.30 }
-  ],
-  '60to80': [
-    { limit: 300000, rate: 0 },
-    { limit: 500000, rate: 0.05 },
-    { limit: 1000000, rate: 0.20 },
-    { limit: Infinity, rate: 0.30 }
-  ],
-  above80: [
-    { limit: 500000, rate: 0 },
-    { limit: 1000000, rate: 0.20 },
-    { limit: Infinity, rate: 0.30 }
-  ]
-},
+      below60: [
+        { limit: 250000, rate: 0 },
+        { limit: 500000, rate: 0.05 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ],
+      '60to80': [
+        { limit: 300000, rate: 0 },
+        { limit: 500000, rate: 0.05 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ],
+      above80: [
+        { limit: 500000, rate: 0 },
+        { limit: 1000000, rate: 0.20 },
+        { limit: Infinity, rate: 0.30 }
+      ]
+    },
     newRegime: [
       { limit: 400000, rate: 0 },
       { limit: 800000, rate: 0.05 },
@@ -102,230 +114,741 @@ const TAX_RULES = {
       { limit: 2000000, rate: 0.20 },
       { limit: 2400000, rate: 0.25 },
       { limit: Infinity, rate: 0.30 }
-    ]
+    ],
+    rebate: {
+      old: { limit: 500000, max: 12500 },
+      new: { limit: 1200000, max: 60000 }
+    },
+    standardDeduction: {
+      old: 50000,
+      new: 75000
+    }
   }
 };
 
-// Calculate progressive tax using an ordered slab table.
+const SUPPORTED_TAX_YEARS = Object.keys(TAX_RULES);
+
+const roundRupee = value => Math.round(Number(value) || 0);
+
+const nonNegative = value => {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : 0;
+};
+
+const isResident = status =>
+  String(status || 'resident').toLowerCase() === 'resident';
+
+const validateTaxYear = taxYear => {
+  if (!TAX_RULES[taxYear]) {
+    throw new Error(
+      `Unsupported taxYear. Use one of: ${SUPPORTED_TAX_YEARS.join(', ')}`
+    );
+  }
+
+  return TAX_RULES[taxYear];
+};
+
+// ─── PROGRESSIVE SLAB TAX ──────────────────────────────────────
 const calculateSlabTax = (taxableIncome, slabs) => {
+  const income = nonNegative(taxableIncome);
+
   let tax = 0;
-  let previousLimit = 0;
+  let lower = 0;
 
   for (const slab of slabs) {
-    const taxableInSlab = Math.max(
+    const upper = slab.limit;
+
+    const amountInSlab = Math.max(
       0,
-      Math.min(taxableIncome, slab.limit) - previousLimit
+      Math.min(income, upper) - lower
     );
 
-    tax += taxableInSlab * slab.rate;
-    previousLimit = slab.limit;
+    tax += amountInSlab * slab.rate;
+    lower = upper;
 
-    if (taxableIncome <= slab.limit) break;
+    if (income <= upper) break;
   }
 
-  return Math.round(tax);
+  return roundRupee(tax);
 };
 
+// ─── AGE CATEGORY ──────────────────────────────────────────────
+const getAgeKey = age => {
+  if (age === 'above80') return 'above80';
+  if (age === '60to80') return '60to80';
+  return 'below60';
+};
 
-// ─── VERSIONED OLD REGIME TAX ────────────────────────────────
+// ─── OLD REGIME BASE TAX ───────────────────────────────────────
 const getOldRegimeBaseTax = (
   taxableIncome,
   age,
-  taxYear = 'FY2024-25'
+  taxYear = 'FY2024-25',
+  residentialStatus = 'resident'
 ) => {
-  const rules = TAX_RULES[taxYear] || TAX_RULES['FY2024-25'];
+  const rules = validateTaxYear(taxYear);
 
-  const slabs =
-    rules.oldRegime[age] || rules.oldRegime.below60;
+  // Age-based old-regime slabs apply according to age.
+  // The AY 2026-27 official guidance lists these slabs for
+  // resident and non-resident individuals.
+  const ageKey = getAgeKey(age);
 
-  let tax = calculateSlabTax(taxableIncome, slabs);
+  let tax = calculateSlabTax(
+    taxableIncome,
+    rules.oldRegime[ageKey]
+  );
 
-  // Section 87A rebate for eligible resident individuals.
-  if (taxableIncome <= 500000) {
-    tax = Math.max(0, tax - 12500);
+  // Rebate is available only to eligible resident individuals.
+  const rebate = rules.rebate.old;
+
+  if (
+    isResident(residentialStatus) &&
+    taxableIncome <= rebate.limit
+  ) {
+    tax = Math.max(0, tax - rebate.max);
   }
 
-  return Math.round(tax);
+  return roundRupee(tax);
 };
 
-
-// ─── VERSIONED NEW REGIME TAX ─────────────────────────────────
+// ─── NEW REGIME BASE TAX ───────────────────────────────────────
 const getNewRegimeBaseTax = (
   taxableIncome,
-  taxYear = 'FY2024-25'
+  taxYear = 'FY2024-25',
+  residentialStatus = 'resident'
 ) => {
-  const rules = TAX_RULES[taxYear] || TAX_RULES['FY2024-25'];
+  const rules = validateTaxYear(taxYear);
 
-  let tax = calculateSlabTax(taxableIncome, rules.newRegime);
+  let tax = calculateSlabTax(
+    taxableIncome,
+    rules.newRegime
+  );
 
-  // Rebate limits differ by tax period.
-  const rebateLimit = taxYear === 'FY2024-25'
-    ? 700000
-    : 1200000;
+  const rebate = rules.rebate.new;
 
-  const maximumRebate = taxYear === 'FY2024-25'
-    ? 25000
-    : 60000;
-
-  if (taxableIncome <= rebateLimit) {
-    tax = Math.max(0, tax - maximumRebate);
+  if (isResident(residentialStatus)) {
+    if (taxableIncome <= rebate.limit) {
+      tax = Math.max(0, tax - rebate.max);
+    } else {
+      // Marginal relief just above the rebate threshold:
+      // tax payable cannot exceed income above that threshold.
+      // The full rebate itself is not available once income
+      // exceeds the eligibility threshold.
+      tax = Math.min(
+        tax,
+        taxableIncome - rebate.limit
+      );
+    }
   }
 
-  return Math.round(tax);
-};
-// Add 4% Health & Education Cess
-const addCess = (baseTax) => Math.round(baseTax * 1.04);
-
-// ─── DEDUCTION CALCULATOR ─────────────────────────────────────
-const calcDeductions = (d = {}) => {
-  const s80C      = Math.min(d.section80C  || 0, 150000);
-  const s80D      = Math.min(d.section80D  || 0, 50000);   // 50k for senior
-  const s80G      = d.section80G    || 0;
-  const hra       = d.hra           || 0;
-  const homeLoan  = Math.min(d.homeLoanInterest || 0, 200000);
-  const nps       = Math.min(d.nps  || 0, 50000);           // 80CCD(1B)
-  const stdDed    = d.standardDeduction ?? 50000;            // default salaried
-  const edu       = Math.min(d.educationLoan || 0, 100000); // 80E no limit but practical cap
-
-  const total = s80C + s80D + s80G + hra + homeLoan + nps + stdDed + edu;
-  return { section80C: s80C, section80D: s80D, section80G: s80G, hra,
-           homeLoanInterest: homeLoan, nps, standardDeduction: stdDed,
-           educationLoan: edu, total };
+  return roundRupee(tax);
 };
 
-// ─── MAIN CALCULATION ─────────────────────────────────────────
+// ─── SURCHARGE RATE ────────────────────────────────────────────
+const getSurchargeRate = (
+  taxableIncome,
+  regime = 'old'
+) => {
+  if (taxableIncome <= 5000000) return 0;
+  if (taxableIncome <= 10000000) return 0.10;
+  if (taxableIncome <= 20000000) return 0.15;
+  if (taxableIncome <= 50000000) return 0.25;
+
+  return regime === 'old' ? 0.37 : 0.25;
+};
+
+// ─── SURCHARGE THRESHOLD ───────────────────────────────────────
+const getSurchargeThreshold = (
+  taxableIncome,
+  regime
+) => {
+  const thresholds = regime === 'old'
+    ? [5000000, 10000000, 20000000, 50000000]
+    : [5000000, 10000000, 20000000];
+
+  return thresholds
+    .filter(limit => taxableIncome > limit)
+    .pop() || null;
+};
+
+// ─── SURCHARGE WITH MARGINAL RELIEF ────────────────────────────
+const applySurcharge = (
+  baseTax,
+  taxableIncome,
+  regime = 'old',
+  taxAtThreshold = 0
+) => {
+  const rate = getSurchargeRate(
+    taxableIncome,
+    regime
+  );
+
+  const ordinarySurcharge = roundRupee(
+    baseTax * rate
+  );
+
+  const threshold = getSurchargeThreshold(
+    taxableIncome,
+    regime
+  );
+
+  let surcharge = ordinarySurcharge;
+
+  if (threshold !== null) {
+    const thresholdRate = getSurchargeRate(
+      threshold,
+      regime
+    );
+
+    const taxPlusSurchargeAtThreshold =
+      taxAtThreshold +
+      roundRupee(taxAtThreshold * thresholdRate);
+
+    const permittedTaxPlusSurcharge =
+      taxPlusSurchargeAtThreshold +
+      (taxableIncome - threshold);
+
+    const permittedSurcharge = Math.max(
+      0,
+      permittedTaxPlusSurcharge - baseTax
+    );
+
+    surcharge = Math.min(
+      ordinarySurcharge,
+      roundRupee(permittedSurcharge)
+    );
+  }
+
+  const taxAfterSurcharge = baseTax + surcharge;
+  const cess = roundRupee(taxAfterSurcharge * 0.04);
+  const totalTax = taxAfterSurcharge + cess;
+
+  return {
+    surcharge,
+    taxAfterSurcharge,
+    cess,
+    totalTax,
+    surchargeRate: rate,
+    marginalReliefApplied:
+      surcharge < ordinarySurcharge
+  };
+};
+
+// ─── DEDUCTION CALCULATOR ──────────────────────────────────────
+// Important: HRA, home-loan and 80G values must be supplied as
+// already-calculated eligible deduction amounts.
+// This function does not determine eligibility from documents.
+const calcDeductions = (
+  d = {},
+  regime = 'old',
+  taxYear = 'FY2024-25'
+) => {
+  const rules = validateTaxYear(taxYear);
+  const isOld = regime === 'old';
+
+  const eligibleSalary =
+    d.isSalariedOrPensioner === true;
+
+  const salaryAmount =
+    nonNegative(d.salaryOrPensionIncome);
+
+  // Section 80C
+  const s80C = isOld
+    ? Math.min(
+        nonNegative(d.section80C),
+        150000
+      )
+    : 0;
+
+  // Section 80D
+  const selfLimit = d.selfFamilySeniorCitizen === true
+    ? 50000
+    : 25000;
+
+  const parentsLimit = d.parentsSeniorCitizen === true
+    ? 50000
+    : 25000;
+
+  const self80DInput =
+    d.section80DSelfFamily !== undefined
+      ? d.section80DSelfFamily
+      : d.section80D;
+
+  const selfFamily80D = isOld
+    ? Math.min(
+        nonNegative(self80DInput),
+        selfLimit
+      )
+    : 0;
+
+  const parents80D = isOld
+    ? Math.min(
+        nonNegative(d.section80DParents),
+        parentsLimit
+      )
+    : 0;
+
+  const s80D = selfFamily80D + parents80D;
+
+  // Section 80G: already-calculated eligible amount.
+  const s80G = isOld
+    ? nonNegative(d.section80GEligible)
+    : 0;
+
+  // HRA: already-calculated eligible exemption.
+  const hra = isOld
+    ? nonNegative(d.hraExemption)
+    : 0;
+
+  // Home-loan interest: caller supplies the eligible deduction
+  // after property-specific limits and loss-set-off rules.
+  const homeLoanInput =
+    d.homeLoanInterestDeduction !== undefined
+      ? d.homeLoanInterestDeduction
+      : d.homeLoanInterest;
+
+  const homeLoan = isOld
+    ? nonNegative(homeLoanInput)
+    : 0;
+
+  // Section 80CCD(1B)
+  const nps80CCD1B = isOld
+    ? Math.min(
+        nonNegative(d.nps80CCD1B || d.nps),
+        50000
+      )
+    : 0;
+
+  // Employer NPS contribution under Section 80CCD(2).
+  // Old regime: generally 10% for other employers and 14%
+  // for Central/State Government employers.
+  // New regime: 14% of eligible salary.
+  const employerNpsRate = isOld
+    ? (
+        d.employerType === 'central' ||
+        d.employerType === 'state'
+          ? 0.14
+          : 0.10
+      )
+    : 0.14;
+
+  const employerNpsCap =
+    nonNegative(d.salaryForNps) *
+    employerNpsRate;
+
+  const employerNps = Math.min(
+    nonNegative(d.employerNpsContribution),
+    employerNpsCap
+  );
+
+  // Section 80E: interest only, no fixed rupee ceiling.
+  // Caller must supply eligible interest for the qualifying period.
+  const educationLoanInput =
+    d.educationLoanInterest !== undefined
+      ? d.educationLoanInterest
+      : d.educationLoan;
+
+  const edu = isOld
+    ? nonNegative(educationLoanInput)
+    : 0;
+
+  // Standard deduction for eligible salary/pension income.
+  const standardDeduction = eligibleSalary
+    ? Math.min(
+        salaryAmount ||
+          nonNegative(d.standardDeduction),
+        d.standardDeduction !== undefined
+          ? nonNegative(d.standardDeduction)
+          : rules.standardDeduction[regime]
+      )
+    : 0;
+
+  const chapterVIA = isOld
+    ? (
+        s80C +
+        s80D +
+        s80G +
+        nps80CCD1B +
+        edu
+      )
+    : 0;
+
+  const total =
+    chapterVIA +
+    hra +
+    homeLoan +
+    employerNps +
+    standardDeduction;
+
+  return {
+    section80C: s80C,
+    section80DSelfFamily: selfFamily80D,
+    section80DParents: parents80D,
+    section80D: s80D,
+    section80G: s80G,
+    hraExemption: hra,
+    hra,
+    homeLoanInterest: homeLoan,
+    nps: nps80CCD1B,
+    nps80CCD1B,
+    employerNpsContribution: employerNps,
+    educationLoan: edu,
+    standardDeduction,
+    total
+  };
+};
+
+// ─── MAIN TAX CALCULATION ──────────────────────────────────────
 const calculateTax = ({
   grossIncome,
   age = 'below60',
   deductions = {},
-  taxYear = 'FY2024-25'
-}) => {
-  const income = Number(grossIncome) || 0;
-  const ded    = calcDeductions(deductions);
+  taxYear = 'FY2024-25',
+  residentialStatus = 'resident'
+} = {}) => {
+  const rules = validateTaxYear(taxYear);
 
-  // --- Old Regime ---
-  const oldTaxableIncome = Math.max(0, income - ded.total);
-  const oldBaseTax = getOldRegimeBaseTax(oldTaxableIncome, age, taxYear);
-  const oldTotalTax      = addCess(oldBaseTax);
+  const income = Number(grossIncome);
 
-  // --- New Regime (only ₹75,000 std deduction from Budget 2024) ---
-  const newTaxableIncome = Math.max(0, income - 75000);
- const newBaseTax = getNewRegimeBaseTax(newTaxableIncome, taxYear);
-  const newTotalTax      = addCess(newBaseTax);
+  if (!Number.isFinite(income) || income < 0) {
+    throw new Error(
+      'grossIncome must be a valid non-negative number.'
+    );
+  }
 
-  const savings           = oldTotalTax - newTotalTax;
-  const recommendedRegime = savings > 0 ? 'new' : 'old';
+  const status = String(
+    residentialStatus
+  ).toLowerCase();
 
-  const fuzzy = fuzzyLogicAnalysis(income, ded.total, age);
+  if (
+    ![
+      'resident',
+      'non-resident',
+      'not-ordinarily-resident'
+    ].includes(status)
+  ) {
+    throw new Error(
+      'residentialStatus must be resident, non-resident, or not-ordinarily-resident.'
+    );
+  }
+
+  // Calculate deductions separately for each regime.
+  const oldDed = calcDeductions(
+    deductions,
+    'old',
+    taxYear
+  );
+
+  const newDed = calcDeductions(
+    deductions,
+    'new',
+    taxYear
+  );
+
+  // OLD REGIME
+  const oldTaxableIncome = Math.max(
+    0,
+    income - oldDed.total
+  );
+
+  const oldAgeKey = getAgeKey(age);
+
+  const oldBaseTax = getOldRegimeBaseTax(
+    oldTaxableIncome,
+    oldAgeKey,
+    taxYear,
+    status
+  );
+
+  const oldThreshold = getSurchargeThreshold(
+    oldTaxableIncome,
+    'old'
+  );
+
+  const oldTaxAtThreshold =
+    oldThreshold === null
+      ? 0
+      : getOldRegimeBaseTax(
+          oldThreshold,
+          oldAgeKey,
+          taxYear,
+          status
+        );
+
+  const oldSurchargeResult = applySurcharge(
+    oldBaseTax,
+    oldTaxableIncome,
+    'old',
+    oldTaxAtThreshold
+  );
+
+  // NEW REGIME
+  const newTaxableIncome = Math.max(
+    0,
+    income - newDed.total
+  );
+
+  const newBaseTax = getNewRegimeBaseTax(
+    newTaxableIncome,
+    taxYear,
+    status
+  );
+
+  const newThreshold = getSurchargeThreshold(
+    newTaxableIncome,
+    'new'
+  );
+
+  const newTaxAtThreshold =
+    newThreshold === null
+      ? 0
+      : getNewRegimeBaseTax(
+          newThreshold,
+          taxYear,
+          status
+        );
+
+  const newSurchargeResult = applySurcharge(
+    newBaseTax,
+    newTaxableIncome,
+    'new',
+    newTaxAtThreshold
+  );
+
+  // REGIME COMPARISON
+  const oldTotalTax = oldSurchargeResult.totalTax;
+  const newTotalTax = newSurchargeResult.totalTax;
+
+  const savings = oldTotalTax - newTotalTax;
+
+  const recommendedRegime =
+    savings > 0 ? 'new' : 'old';
+
+  const fuzzy = fuzzyLogicAnalysis(
+    income,
+    oldDed.total,
+    age
+  );
 
   return {
-    grossIncome : income,
+    grossIncome: income,
     age,
-    deductions  : ded,
-    oldRegime   : {
-      taxableIncome : oldTaxableIncome,
-      baseTax       : oldBaseTax,
-      cess          : oldTotalTax - oldBaseTax,
-      totalTax      : oldTotalTax,
-      effectiveRate : income > 0 ? +((oldTotalTax / income) * 100).toFixed(2) : 0,
-      takeHome      : income - oldTotalTax
+    residentialStatus: status,
+    taxYear,
+    act: rules.act,
+
+    deductions: oldDed,
+
+    oldRegime: {
+      taxableIncome: oldTaxableIncome,
+      deductions: oldDed,
+      baseTax: oldBaseTax,
+      surcharge: oldSurchargeResult.surcharge,
+      surchargeRate: oldSurchargeResult.surchargeRate,
+      taxAfterSurcharge:
+        oldSurchargeResult.taxAfterSurcharge,
+      cess: oldSurchargeResult.cess,
+      totalTax: oldTotalTax,
+      effectiveRate: income > 0
+        ? +(
+            (oldTotalTax / income) * 100
+          ).toFixed(2)
+        : 0,
+      takeHome: income - oldTotalTax,
+      marginalReliefApplied:
+        oldSurchargeResult.marginalReliefApplied
     },
-    newRegime   : {
-      taxableIncome : newTaxableIncome,
-      baseTax       : newBaseTax,
-      cess          : newTotalTax - newBaseTax,
-      totalTax      : newTotalTax,
-      effectiveRate : income > 0 ? +((newTotalTax / income) * 100).toFixed(2) : 0,
-      takeHome      : income - newTotalTax
+
+    newRegime: {
+      taxableIncome: newTaxableIncome,
+      deductions: newDed,
+      baseTax: newBaseTax,
+      surcharge: newSurchargeResult.surcharge,
+      surchargeRate: newSurchargeResult.surchargeRate,
+      taxAfterSurcharge:
+        newSurchargeResult.taxAfterSurcharge,
+      cess: newSurchargeResult.cess,
+      totalTax: newTotalTax,
+      effectiveRate: income > 0
+        ? +(
+            (newTotalTax / income) * 100
+          ).toFixed(2)
+        : 0,
+      takeHome: income - newTotalTax,
+      marginalReliefApplied:
+        newSurchargeResult.marginalReliefApplied
     },
-    recommendation : {
-      regime    : recommendedRegime,
-      savings   : Math.abs(savings),
-      message   : buildRecommendationMsg(recommendedRegime, Math.abs(savings), ded.total)
+
+    recommendation: {
+      regime: recommendedRegime,
+      savings: Math.abs(savings),
+      message: buildRecommendationMsg(
+        recommendedRegime,
+        Math.abs(savings),
+        oldDed.total
+      )
     },
-    fuzzyAnalysis : fuzzy
+
+    fuzzyAnalysis: fuzzy
   };
 };
 
-// ─── FUZZY LOGIC ENGINE ───────────────────────────────────────
-/**
- * Membership functions:
- *   incomeLevel  → { low, medium, high }
- *   dedLevel     → { low, medium, high }  (as ratio of income)
- *   complexity   → { low, medium, high }
- *
- * Rules:
- *   R1: income.high  ∧ ded.low    → new regime, mild CA suggestion
- *   R2: income.med   ∧ ded.high   → old regime
- *   R3: income.high  ∧ ded.high   → old regime, strong CA suggestion
- *   R4: complexity.high            → strong CA suggestion
- *   R5: income.low                 → new regime (simpler)
- */
+// ─── FUZZY LOGIC ENGINE ────────────────────────────────────────
 const fuzzyMF = {
-  income: (x) => ({
-    low    : x < 500000  ? 1 : x < 800000  ? (800000 - x)  / 300000 : 0,
-    medium : x < 500000  ? 0 : x < 800000  ? (x - 500000)  / 300000
-           : x < 1200000 ? (1200000 - x) / 400000 : 0,
-    high   : x < 800000  ? 0 : x < 1200000 ? (x - 800000)  / 400000 : 1
+  income: x => ({
+    low: x < 500000
+      ? 1
+      : x < 800000
+        ? (800000 - x) / 300000
+        : 0,
+
+    medium: x < 500000
+      ? 0
+      : x < 800000
+        ? (x - 500000) / 300000
+        : x < 1200000
+          ? (1200000 - x) / 400000
+          : 0,
+
+    high: x < 800000
+      ? 0
+      : x < 1200000
+        ? (x - 800000) / 400000
+        : 1
   }),
+
   deduction: (d, income) => {
-    const r = income > 0 ? d / income : 0;
+    const ratio = income > 0 ? d / income : 0;
+
     return {
-      low    : r < 0.10 ? 1 : r < 0.20 ? (0.20 - r) / 0.10 : 0,
-      medium : r < 0.10 ? 0 : r < 0.20 ? (r - 0.10) / 0.10
-             : r < 0.30 ? (0.30 - r) / 0.10 : 0,
-      high   : r < 0.20 ? 0 : r < 0.30 ? (r - 0.20) / 0.10 : 1
+      low: ratio < 0.10
+        ? 1
+        : ratio < 0.20
+          ? (0.20 - ratio) / 0.10
+          : 0,
+
+      medium: ratio < 0.10
+        ? 0
+        : ratio < 0.20
+          ? (ratio - 0.10) / 0.10
+          : ratio < 0.30
+            ? (0.30 - ratio) / 0.10
+            : 0,
+
+      high: ratio < 0.20
+        ? 0
+        : ratio < 0.30
+          ? (ratio - 0.20) / 0.10
+          : 1
     };
   },
+
   complexity: (income, deductions, age) => {
-    let s = 0;
-    if (income > 1000000)  s += 0.3;
-    if (income > 2000000)  s += 0.3;
-    if (deductions > 200000) s += 0.2;
-    if (age !== 'below60') s += 0.1;
-    if (deductions > 0 && income > 500000) s += 0.1;
+    let score = 0;
+
+    if (income > 1000000) score += 0.3;
+    if (income > 2000000) score += 0.3;
+    if (deductions > 200000) score += 0.2;
+    if (age !== 'below60') score += 0.1;
+    if (deductions > 0 && income > 500000) score += 0.1;
+
     return {
-      low    : s < 0.3 ? 1 : s < 0.6 ? (0.6 - s) / 0.3 : 0,
-      medium : s < 0.3 ? 0 : s < 0.6 ? (s - 0.3) / 0.3 : s < 0.9 ? (0.9 - s) / 0.3 : 0,
-      high   : s < 0.6 ? 0 : s < 0.9 ? (s - 0.6) / 0.3 : 1
+      low: score < 0.3
+        ? 1
+        : score < 0.6
+          ? (0.6 - score) / 0.3
+          : 0,
+
+      medium: score < 0.3
+        ? 0
+        : score < 0.6
+          ? (score - 0.3) / 0.3
+          : score < 0.9
+            ? (0.9 - score) / 0.3
+            : 0,
+
+      high: score < 0.6
+        ? 0
+        : score < 0.9
+          ? (score - 0.6) / 0.3
+          : 1
     };
   }
 };
 
-const fuzzyLogicAnalysis = (income, deductions, age) => {
-  const inc  = fuzzyMF.income(income);
-  const ded  = fuzzyMF.deduction(deductions, income);
-  const comp = fuzzyMF.complexity(income, deductions, age);
+const fuzzyLogicAnalysis = (
+  income,
+  deductions,
+  age
+) => {
+  const inc = fuzzyMF.income(income);
+  const ded = fuzzyMF.deduction(
+    deductions,
+    income
+  );
+  const comp = fuzzyMF.complexity(
+    income,
+    deductions,
+    age
+  );
 
-  let newScore = 0, oldScore = 0, caScore = 0;
+  let newScore = 0;
+  let oldScore = 0;
+  let caScore = 0;
 
-  // R1: High income + low deductions → new regime
+  // R1: High income + low deductions -> new regime.
   if (inc.high > 0.7 && ded.low > 0.6) {
-    newScore += Math.min(inc.high, ded.low) * 0.8;
-    caScore  += 0.3;
+    newScore += Math.min(
+      inc.high,
+      ded.low
+    ) * 0.8;
+
+    caScore += 0.3;
   }
-  // R2: Medium income + high deductions → old regime
+
+  // R2: Medium income + high deductions -> old regime.
   if (inc.medium > 0.5 && ded.high > 0.6) {
-    oldScore += Math.min(inc.medium, ded.high) * 0.9;
+    oldScore += Math.min(
+      inc.medium,
+      ded.high
+    ) * 0.9;
   }
-  // R3: High income + high deductions → old regime + CA
+
+  // R3: High income + high deductions -> old regime + CA.
   if (inc.high > 0.5 && ded.high > 0.5) {
-    oldScore += Math.min(inc.high, ded.high) * 0.7;
-    caScore  += 0.5;
+    oldScore += Math.min(
+      inc.high,
+      ded.high
+    ) * 0.7;
+
+    caScore += 0.5;
   }
-  // R4: High complexity → CA
-  if (comp.high > 0.7) caScore += comp.high;
-  // R5: Low income → new
-  if (inc.low > 0.7) newScore += 0.5;
+
+  // R4: High complexity -> CA.
+  if (comp.high > 0.7) {
+    caScore += comp.high;
+  }
+
+  // R5: Low income -> new regime.
+  if (inc.low > 0.7) {
+    newScore += 0.5;
+  }
 
   const totalScore = newScore + oldScore || 1;
-  const regimeSuggestion = newScore >= oldScore ? 'new' : 'old';
-  const confidence = +(Math.min(Math.abs(newScore - oldScore) / totalScore, 1) * 100).toFixed(0);
-  const suggestCA  = caScore > 0.5;
+  const suggestCA = caScore > 0.5;
 
   return {
-    incomeLevel: inc, deductionLevel: ded, complexity: comp,
-    regimeSuggestion, confidence,
+    incomeLevel: inc,
+    deductionLevel: ded,
+    complexity: comp,
+    regimeSuggestion:
+      newScore >= oldScore ? 'new' : 'old',
+    confidence: +(
+      Math.min(
+        Math.abs(newScore - oldScore) / totalScore,
+        1
+      ) * 100
+    ).toFixed(0),
     suggestCA,
     caReason: suggestCA
       ? 'Your financial complexity suggests consulting a CA for optimal tax filing'
@@ -333,111 +856,146 @@ const fuzzyLogicAnalysis = (income, deductions, age) => {
   };
 };
 
-// ─── DEDUCTION OPTIMIZER ──────────────────────────────────────
-const optimizeDeductions = (income, currentDeductions = {}) => {
+// ─── DEDUCTION OPTIMIZER ───────────────────────────────────────
+const optimizeDeductions = (
+  income,
+  currentDeductions = {},
+  taxYear = 'FY2024-25',
+  regime = 'old'
+) => {
+  validateTaxYear(taxYear);
+
   const tips = [];
-  const cd   = currentDeductions;
 
-  const rem80C = Math.max(0, 150000 - (cd.section80C || 0));
-  if (rem80C > 0) tips.push({
-    section   : '80C',
-    potential : rem80C,
-    action    : `Invest ₹${rem80C.toLocaleString('en-IN')} more in ELSS/PPF/LIC to max 80C`,
-    priority  : 'high',
-    icon      : '💰'
-  });
+  if (regime !== 'old') return tips;
 
-  if (!cd.nps || cd.nps < 50000) tips.push({
-    section   : '80CCD(1B)',
-    potential : 50000,
-    action    : 'Open NPS & invest ₹50,000 for EXTRA deduction (over 80C limit)',
-    priority  : 'high',
-    icon      : '🏦'
-  });
+  const remaining80C = Math.max(
+    0,
+    150000 - nonNegative(currentDeductions.section80C)
+  );
 
-  const rem80D = Math.max(0, 25000 - (cd.section80D || 0));
-  if (rem80D > 0) tips.push({
-    section   : '80D',
-    potential : rem80D,
-    action    : `Buy health insurance to save ₹${rem80D.toLocaleString('en-IN')} via 80D`,
-    priority  : 'medium',
-    icon      : '🏥'
-  });
+  if (remaining80C > 0) {
+    tips.push({
+      section: '80C',
+      potential: remaining80C,
+      action:
+        `Check eligible 80C investments/payments; remaining indicative limit ₹${remaining80C.toLocaleString('en-IN')}.`,
+      priority: 'high',
+      icon: '💰'
+    });
+  }
 
-  if (!cd.homeLoanInterest && income > 800000) tips.push({
-    section   : '24b',
-    potential : 200000,
-    action    : 'Home loan interest up to ₹2L deductible under Section 24b',
-    priority  : 'low',
-    icon      : '🏠'
-  });
+  const current80D =
+    nonNegative(
+      currentDeductions.section80DSelfFamily ||
+      currentDeductions.section80D
+    ) +
+    nonNegative(currentDeductions.section80DParents);
 
-  if (!cd.educationLoan) tips.push({
-    section   : '80E',
-    potential : 100000,
-    action    : 'Education loan interest fully deductible under 80E (no limit)',
-    priority  : 'low',
-    icon      : '🎓'
-  });
+  if (current80D < 25000) {
+    tips.push({
+      section: '80D',
+      potential: 25000 - current80D,
+      action:
+        'Check eligible health-insurance premium and preventive check-up payments under Section 80D.',
+      priority: 'medium',
+      icon: '🏥'
+    });
+  }
+
+  if (!currentDeductions.employerNpsContribution) {
+    tips.push({
+      section: '80CCD(2)',
+      potential: 0,
+      action:
+        'Check whether your employer contributes to an eligible NPS account; limits depend on salary and employer category.',
+      priority: 'medium',
+      icon: '🏦'
+    });
+  }
 
   return tips;
 };
 
-// ─── GOAL STRATEGIES ──────────────────────────────────────────
-const getGoalStrategy = (goal, income, currentDeductions = {}) => {
+// ─── GOAL STRATEGIES ───────────────────────────────────────────
+const getGoalStrategy = (
+  goal,
+  income,
+  currentDeductions = {}
+) => {
   const strategies = {
-    save_max_tax : {
-      title       : 'Maximum Tax Saving Strategy',
-      description : 'Claim every eligible deduction under the old regime to minimize tax outgo',
-      icon        : '💰',
-      regime      : 'old',
-      steps       : [
-        'Maximize 80C: Invest ₹1.5L in ELSS + PPF combination',
-        'Add NPS ₹50K under 80CCD(1B) – extra deduction beyond 80C',
-        'Buy family health insurance to claim 80D (₹25,000-₹50,000)',
-        'If renting, calculate & claim HRA exemption',
-        'Home loan? Claim ₹2L interest deduction under Section 24b',
-        'Donate to PM CARES or registered NGOs for 80G deduction'
+    save_max_tax: {
+      title: 'Maximum Tax Saving Strategy',
+      description:
+        'Review eligible old-regime deductions before comparing final tax under both regimes.',
+      icon: '💰',
+      regime: 'old',
+      steps: [
+        'Check eligible Section 80C payments/investments within the aggregate limit.',
+        'Check eligible health-insurance payments under Section 80D.',
+        'Check NPS contributions under the applicable provisions.',
+        'Calculate HRA exemption from salary, rent and city details where eligible.',
+        'Verify home-loan interest and education-loan interest eligibility.',
+        'Compare final old- and new-regime tax before choosing.'
       ],
-      estimatedSaving : Math.min(income * 0.15, 150000)
+      estimatedSaving: null
     },
-    balanced_strategy : {
-      title       : 'Balanced Tax + Investment Strategy',
-      description : 'Balance tax savings with liquidity and diversified investment growth',
-      icon        : '⚖️',
-      regime      : income > 1500000 ? 'new' : 'old',
-      steps       : [
-        'Invest ₹1.5L in ELSS (tax saving + equity growth, 3-yr lock-in)',
-        'Open NPS for ₹50K extra deduction + pension corpus',
-        'Keep 6-month emergency fund in liquid mutual funds',
-        'Term insurance for life cover + 80C benefit',
-        'Health insurance for family + 80D deduction',
-        'Review old vs new regime every April'
+
+    balanced_strategy: {
+      title: 'Balanced Tax + Investment Strategy',
+      description:
+        'Compare tax outcomes while considering liquidity, risk and investment goals.',
+      icon: '⚖️',
+      regime: 'compare',
+      steps: [
+        'Compare both regimes using verified eligible deductions.',
+        'Maintain an emergency fund appropriate to your expenses.',
+        'Choose investments based on risk tolerance and time horizon, not tax savings alone.',
+        'Review employer NPS contributions and eligible insurance cover.',
+        'Recheck tax rules at the start of each tax year.'
       ],
-      estimatedSaving : Math.min(income * 0.10, 100000)
+      estimatedSaving: null
     },
-    wealth_growth : {
-      title       : 'Wealth Growth Strategy',
-      description : 'Opt new regime, redirect surplus into high-return investments',
-      icon        : '📈',
-      regime      : 'new',
-      steps       : [
-        'Switch to New Regime – save time, keep more investable cash',
-        'Invest full ₹2L+ (saved from deduction filing) in Nifty 50 index fund',
-        'LTCG on equity up to ₹1.25L per year is TAX-FREE',
-        'Maximize EPF/VPF for risk-free debt allocation',
-        'Use Debt mutual funds for goals < 3 years',
-        'Tax-loss harvest every March to offset capital gains'
+
+    wealth_growth: {
+      title: 'Wealth Growth Strategy',
+      description:
+        'Compare tax outcomes and invest surplus according to goals and risk tolerance.',
+      icon: '📈',
+      regime: 'new',
+      steps: [
+        'Calculate the new-regime tax using the applicable tax year.',
+        'Compare the tax saved against the old regime after eligible deductions.',
+        'Invest surplus according to your time horizon and risk profile.',
+        'Review asset allocation and liquidity needs periodically.'
       ],
-      estimatedSaving : Math.min(income * 0.08, 80000)
+      estimatedSaving: null
     }
   };
+
   return strategies[goal] || strategies.balanced_strategy;
 };
 
-const buildRecommendationMsg = (regime, savings, deductions) =>
-  regime === 'new'
-    ? `New Regime saves ₹${savings.toLocaleString('en-IN')}. Your deductions (₹${deductions.toLocaleString('en-IN')}) aren't high enough to benefit from Old Regime.`
-    : `Old Regime saves ₹${savings.toLocaleString('en-IN')}. Your deductions (₹${deductions.toLocaleString('en-IN')}) significantly reduce taxable income.`;
+// ─── RECOMMENDATION MESSAGE ────────────────────────────────────
+const buildRecommendationMsg = (
+  regime,
+  savings,
+  deductions
+) => regime === 'new'
+  ? `New Regime saves ₹${savings.toLocaleString('en-IN')} based on the inputs supplied. Old-regime deductions entered: ₹${deductions.toLocaleString('en-IN')}.`
+  : `Old Regime saves ₹${savings.toLocaleString('en-IN')} based on the inputs supplied. Old-regime deductions entered: ₹${deductions.toLocaleString('en-IN')}.`;
 
-module.exports = { calculateTax, getGoalStrategy, optimizeDeductions, fuzzyLogicAnalysis, calcDeductions };
+// ─── EXPORTS ───────────────────────────────────────────────────
+module.exports = {
+  TAX_RULES,
+  calculateSlabTax,
+  getOldRegimeBaseTax,
+  getNewRegimeBaseTax,
+  getSurchargeRate,
+  applySurcharge,
+  calculateTax,
+  getGoalStrategy,
+  optimizeDeductions,
+  fuzzyLogicAnalysis,
+  calcDeductions
+};
