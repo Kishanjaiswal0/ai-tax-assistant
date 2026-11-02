@@ -16,6 +16,7 @@ import DocumentsPage   from './components/Documents/DocumentsPage';
 import CAPage          from './components/CA/CAPage';
 import CAProfilePage   from './components/CA/CAProfilePage';
 import HistoryPage     from './components/History/HistoryPage';
+import TaxHistoryPage from './components/History/TaxHistoryPage';
 import './App.css';
 
 // Route guard – requires login
@@ -49,6 +50,7 @@ const AppRoutes = () => {
         <Route path="ca"                element={<CAPage />} />
         <Route path="ca/profile"        element={<CARoute><CAProfilePage /></CARoute>} />
         <Route path="history"           element={<HistoryPage />} />
+        <Route path="tax-history" element={<TaxHistoryPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
